@@ -1,0 +1,2 @@
+folders = ['atuin', 'btop', 'git', 'herdr', 'mise', 'starship', 'tmux', 'vim', 'zsh']
+bakup_dir = './config'
