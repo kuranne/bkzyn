@@ -1,0 +1,14 @@
+**/*.key
+**/*.pem
+**/id_rsa*
+**/id_ed25519*
+**/credentials*
+**/*.token*
+**/.env*
+
+# Ignore log files and shell history
+**/*history*
+**/*.log
+**/*.bak
+**/.DS_Store
+```
