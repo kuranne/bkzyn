@@ -1,0 +1,11 @@
+configs = ['atuin', 'btop', 'git', 'herdr', 'mise', 'starship', 'tmux', 'vim', 'zsh']
+
+[atuin]
+include = ['config.toml']
+
+[vim]
+exclude = ['plugged', 'autoload']
+
+[zsh]
+include = [".z*", "*.zsh"]
+exclude = [".zcompdump*"]
