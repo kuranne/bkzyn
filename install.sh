@@ -7,20 +7,22 @@ echo "--> Bootstrapping bkzyn backup system..."
 # 1. install homebrew first
 if ! command -v brew >/dev/null 2>&1; then
     echo "--> Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    if [ -f "/opt/homebrew/bin/brew" ]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [ -f "/usr/local/bin/brew" ]; then
-        eval "$(/usr/local/bin/brew shellenv)"
-    fi
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 else
     echo "--> Homebrew $ALREADYINSTALLED"
+fi
+
+# Always ensure brew is in PATH for this script session
+if [ -f "/opt/homebrew/bin/brew" ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -f "/usr/local/bin/brew" ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
 fi
 
 # 2. install mise via homebrew
 if ! command -v mise >/dev/null 2>&1; then
     echo "--> Installing mise..."
-    brew install -y mise
+    brew install mise
 else
     echo "--> mise $ALREADYINSTALLED"
 fi
@@ -31,24 +33,25 @@ mise use -g rust@latest 1> /dev/null
 mise use -g python@latest 1> /dev/null
 
 # 4. install oh-my-zsh
-if [ ! command -v omz &> /dev/null ]; then
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
     echo "--> Installing oh-my-zsh..."
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 else
     echo "--> Oh-my-Zsh! $ALREADYINSTALLED"
 fi
 
-# 5. clone the github repository to $XDG_DATA_HOME/backup
+# 5. link the current repository to $XDG_DATA_HOME/backup
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/backup"
-if [ ! -d "$DATA_DIR" ]; then
-    echo "--> Cloning repository to $DATA_DIR..."
-    git clone https://github.com/kuranne/backup.git "$DATA_DIR"
-else
-    echo "--> Repository already exists at $DATA_DIR, pulling latest..."
-    cd "$DATA_DIR" && git pull
+if [ "$PWD" != "$DATA_DIR" ]; then
+    echo "--> Linking current repository to $DATA_DIR..."
+    if [ -e "$DATA_DIR" ] && [ ! -L "$DATA_DIR" ]; then
+        echo "--> WARNING: $DATA_DIR already exists and is not a symlink."
+        echo "--> Proceeding, but bkzyn might read from the old directory."
+    else
+        mkdir -p "$(dirname "$DATA_DIR")"
+        ln -snf "$PWD" "$DATA_DIR"
+    fi
 fi
-
-cd "$DATA_DIR"
 
 # 6. compile command line
 echo "--> Compiling bkzyn..."
@@ -63,13 +66,7 @@ cp target/release/bkzyn "$HOME/.local/bin/bkzyn"
 
 # 8. Use the command line to set up
 echo "--> Running bkzyn setup..."
-typedef -U path
-
-path=(
-    $HOME/.local/bin
-    $path
-)
-export PATH
+export PATH="$HOME/.local/bin:$PATH"
 
 bkzyn setup
 

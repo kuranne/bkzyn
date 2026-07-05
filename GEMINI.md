@@ -18,6 +18,7 @@ Use for migrating, restoring and setup new device (mainly for macOS)
 
 - Use 4 spaces for indentations.
 - Follow POSIX and XDG.
+- Always use one variable, not let too much as possible.
 
 ## Comment Style
 

@@ -7,8 +7,6 @@
 	defaultbranch = main
 [alias]
 	kuranne = "!f() { git config --local user.name 'kuranne' && git config --local user.email 'kurannemaisa@outlook.com' && git config --local user.signingkey 'DB31B4F3749DD9F4' && git config --local commit.gpgsign true; }; f"
-[core]
-	excludesfile = /Users/kuranne/.gitignore_global
 [user]
 	name = Kuramais
 	email = kurannemaisa@outlook.com

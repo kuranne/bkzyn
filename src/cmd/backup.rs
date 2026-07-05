@@ -2,69 +2,60 @@ use crate::config::BackupConfig;
 use chrono::Local;
 use ignore::WalkBuilder;
 use std::fs;
-use std::path::PathBuf;
 use tar::Builder;
 
-pub fn run(dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let repo_dir = std::env::current_dir()?;
-    let old_dir = repo_dir.join(".old");
-    let config_dir = repo_dir.join("config");
+/// Backs up local configurations to the repository config directory.
+pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let ui = crate::cli::CliManager::new(verbose);
 
-    if !old_dir.exists() {
-        fs::create_dir_all(&old_dir)?;
+    if !paths.old.exists() {
+        fs::create_dir_all(&paths.old)?;
     }
 
-    // 1. Backup existing ./config
-    if config_dir.exists() {
+    // 1. Backup existing config
+    if paths.config.exists() {
         let date_str = Local::now().format("%Y-%m-%dT%H%M%S").to_string();
         let archive_name = format!("config_{}.tar.zst", date_str);
-        let archive_path = old_dir.join(&archive_name);
+        let archive_path = paths.old.join(&archive_name);
 
-        if verbose {
-            println!(
-                "--> Backing up current config to {}",
-                archive_path.display()
-            );
-        }
+        ui.status("INFO", "Backup", &format!("Backing up current config to {}", archive_path.display()));
 
         if !dry_run {
             let tar_zst_file = fs::File::create(&archive_path)?;
-            let enc = zstd::Encoder::new(tar_zst_file, 3)?.auto_finish();
+            let enc = zstd::Encoder::new(tar_zst_file, 3)?;
             let mut tar = Builder::new(enc);
-            tar.append_dir_all("config", &config_dir)?;
-            tar.finish()?;
+            tar.append_dir_all("config", &paths.config)?;
+            let enc = tar.into_inner()?;
+            enc.finish()?;
         }
     }
 
     // 2. Read config
-    let toml_path = repo_dir.join("backup.toml");
+    let toml_path = paths.repo.join("backup.toml");
     if !toml_path.exists() {
-        return Err("backup.toml not found in the current directory".into());
+        return Err("backup.toml not found in repository directory".into());
     }
     let config = BackupConfig::load(toml_path)?;
 
     // 3. Sync from XDG_CONFIG_HOME
-    let xdg_config_home = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| dirs::home_dir().unwrap().join(".config"));
-
-    if !config_dir.exists() && !dry_run {
-        fs::create_dir_all(&config_dir)?;
+    if !paths.config.exists() && !dry_run {
+        fs::create_dir_all(&paths.config)?;
     }
 
     for app in config.configs {
-        let src_path = xdg_config_home.join(&app);
-        if !src_path.exists() {
-            if verbose {
-                println!("--> Skipping {} (not found at {})", app, src_path.display());
-            }
+        if app.contains('/') || app.contains('\\') || app == ".." || app == "." {
+            ui.warn("Security", &format!("Skipping invalid app name '{}' to prevent path traversal.", app));
             continue;
         }
 
-        let dest_path = config_dir.join(&app);
-        if verbose {
-            println!("--> Syncing {} to repository...", app);
+        let src_path = paths.xdg_config.join(&app);
+        if !src_path.exists() {
+            ui.status("SKIP", &app, &format!("Not found at {}", src_path.display()));
+            continue;
         }
+
+        let dest_path = paths.config.join(&app);
+        ui.status("INFO", "Sync", &format!("Syncing {} to repository...", app));
 
         let item_config = config.items.get(&app);
         let mut exclude_builder = globset::GlobSetBuilder::new();
@@ -115,9 +106,7 @@ pub fn run(dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error
                 continue;
             }
 
-            if verbose {
-                println!("    Copying {}", rel_path.display());
-            }
+            ui.status("COPY", &app, &format!("{}", rel_path.display()));
 
             if !dry_run {
                 if let Some(parent) = dest_file.parent() {
@@ -126,17 +115,12 @@ pub fn run(dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error
 
                 // Gracefully catch copy errors so it doesn't crash the whole backup
                 if let Err(e) = fs::copy(entry.path(), &dest_file) {
-                    if verbose {
-                        println!(
-                            "    Warning: Failed to copy {} ({}) - skipping.",
-                            rel_path.display(),
-                            e
-                        );
-                    }
+                    ui.warn("Copy", &format!("Failed to copy {} ({}) - skipping.", rel_path.display(), e));
                 }
             }
         }
     }
 
+    ui.done("Successful backup");
     Ok(())
 }
