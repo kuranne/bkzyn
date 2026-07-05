@@ -3,38 +3,41 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub fn run(dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let repo_dir = std::env::current_dir()?;
-    let config_dir = repo_dir.join("config");
+/// Restores configuration symlinks from repository config directory to the system.
+pub fn run(
+    paths: &crate::AppPaths,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let ui = crate::cli::CliManager::new(verbose);
 
-    let xdg_config_home = std::env::var("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| dirs::home_dir().unwrap().join(".config"));
-
-    if !config_dir.exists() {
+    if !paths.config.exists() {
         return Err("No config directory found in the repository.".into());
     }
 
-    if verbose {
-        println!("--> Restoring configs to {}", xdg_config_home.display());
-    }
+    ui.status(
+        "INFO",
+        "Restore",
+        &format!("Restoring configs to {}", paths.xdg_config.display()),
+    );
 
     if !dry_run {
-        fs::create_dir_all(&xdg_config_home)?;
+        fs::create_dir_all(&paths.xdg_config)?;
     }
 
-    for entry in fs::read_dir(config_dir)? {
+    // 1. Restore configuration symlinks
+
+    for entry in fs::read_dir(&paths.config)? {
         let entry = entry?;
         let src_path = entry.path();
-        let dest_path = xdg_config_home.join(entry.file_name());
+        let dest_path = paths.xdg_config.join(entry.file_name());
+        let app_name = entry.file_name().to_string_lossy().into_owned();
 
-        if verbose {
-            println!(
-                "    Restoring {} -> {}",
-                src_path.display(),
-                dest_path.display()
-            );
-        }
+        ui.status(
+            "LINK",
+            &app_name,
+            &format!("{} -> {}", src_path.display(), dest_path.display()),
+        );
 
         if !dry_run {
             if dest_path.exists() {
@@ -42,21 +45,21 @@ pub fn run(dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error
                 let meta = fs::symlink_metadata(&dest_path)?;
                 if meta.is_dir() {
                     let backup_path = PathBuf::from(format!("{}.bak", dest_path.display()));
-                    if verbose {
-                        println!(
-                            "        [Backup] {} -> {}",
-                            dest_path.display(),
-                            backup_path.display()
-                        );
-                    }
+                    ui.status(
+                        "BACKUP",
+                        &app_name,
+                        &format!("{} -> {}", dest_path.display(), backup_path.display()),
+                    );
                     fs::rename(&dest_path, &backup_path)?;
                 } else {
                     // For files or symlinks, just remove them to replace with symlink
-                    fs::remove_file(&dest_path).unwrap_or_else(|_| {
-                        if meta.is_dir() {
-                            fs::remove_dir_all(&dest_path).unwrap()
-                        }
-                    });
+                    if let Err(e) = fs::remove_file(&dest_path) {
+                        ui.warn(
+                            "Restore",
+                            &format!("Failed to remove {}: {}", dest_path.display(), e),
+                        );
+                        continue;
+                    }
                 }
             }
 
@@ -77,6 +80,7 @@ pub fn run(dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error
         }
     }
 
+    ui.done("Successful restore");
     Ok(())
 }
 

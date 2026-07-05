@@ -1,0 +1,19 @@
+services:
+  bkzyn-linux-test:
+    build:
+      context: .
+      dockerfile: script/Dockerfile.test
+    volumes:
+      # Mount the current project directly into the container for live editing
+      - .:/home/testuser/app
+      # Create an anonymous volume for the target directory to prevent Rust compilation 
+      # conflicts between the host macOS machine and the Linux container
+      - cargo-target:/home/testuser/app/target
+    environment:
+      - CARGO_TARGET_DIR=/home/testuser/app/target
+    # Instead of instantly exiting, we start a sleep command so you can `docker compose exec` into it
+    # and run ./install.sh or cargo build interactively
+    command: tail -f /dev/null
+
+volumes:
+  cargo-target:
