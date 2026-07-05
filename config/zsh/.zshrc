@@ -136,8 +136,8 @@ fi
 # Add this in latest, to ensure that all paths order in correct sequence.
 path=(
   $HOME/.local/bin
-  $CARGO_HOME/bin
   $HOME/.nix-profile/bin
+  $CARGO_HOME/bin
   /run/current-system/sw/bin
   $BREW_PREFIX/sbin
   $BREW_PREFIX/opt/openjdk/bin

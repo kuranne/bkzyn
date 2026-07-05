@@ -39,9 +39,12 @@ pub fn run(
     }
 
     // 2. Read config
-    let toml_path = paths.config.join("backup").join("backup.toml");
+    let mut toml_path = paths.xdg_config.join("backup").join("backup.toml");
     if !toml_path.exists() {
-        return Err("backup.toml not found in repository directory".into());
+        toml_path = paths.config.join("backup").join("backup.toml");
+    }
+    if !toml_path.exists() {
+        return Err("backup.toml not found in configuration or repository directory".into());
     }
     let config = BackupConfig::load(toml_path)?;
 
