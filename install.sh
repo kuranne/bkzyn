@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+ALREADYINSTALLED="is already installed, skip"
 set -e
 
 echo "--> Bootstrapping bkzyn backup system..."
@@ -12,18 +13,22 @@ if ! command -v brew >/dev/null 2>&1; then
     elif [ -f "/usr/local/bin/brew" ]; then
         eval "$(/usr/local/bin/brew shellenv)"
     fi
+else
+    echo "--> Homebrew $ALREADYINSTALLED"
 fi
 
 # 2. install mise via homebrew
 if ! command -v mise >/dev/null 2>&1; then
     echo "--> Installing mise..."
-    brew install mise
+    brew install -y mise
+else
+    echo "--> mise $ALREADYINSTALLED"
 fi
 
 # 3. use mise to install rust and python
 echo "--> Installing rust and python via mise..."
-mise use -g rust@latest
-mise use -g python@latest
+mise use -g rust@latest 1> /dev/null
+mise use -g python@latest 1> /dev/null
 
 # 4. install oh-my-zsh
 if [ ! -d "$HOME/.oh-my-zsh" ]; then
@@ -49,12 +54,21 @@ cargo build --release
 
 # 7. move binary to ~/.local/bin
 echo "--> Installing bkzyn binary to ~/.local/bin..."
-mkdir -p "$HOME/.local/bin"
+if [ ! -d "$HOME/.local/bin" ]; then
+    mkdir -p "$HOME/.local/bin"
+fi
 cp target/release/bkzyn "$HOME/.local/bin/bkzyn"
 
 # 8. Use the command line to set up
 echo "--> Running bkzyn setup..."
-export PATH="$HOME/.local/bin:$PATH"
+typedef -U path
+
+path=(
+    $HOME/.local/bin
+    $path
+)
+export PATH
+
 bkzyn setup
 
 echo "--> Setup complete!"

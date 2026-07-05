@@ -57,9 +57,8 @@ if [[ -d "/opt/homebrew" ]]; then
 fi
 
 path=(
-  $HOME/bin
+  $HOME/.local/bin
   $CARGO_HOME/bin
-  $HOME/.local/share/notebooklm-py/.venv/bin
   $BREW_PREFIX/sbin
   $BREW_PREFIX/opt/openjdk/bin
   $BREW_PREFIX/opt/llvm/bin
