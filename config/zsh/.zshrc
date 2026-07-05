@@ -120,9 +120,8 @@ fi
 
 # Add this in latest, to ensure that all paths order in correct sequence.
 path=(
-  $HOME/bin
+  $HOME/.local/bin
   $CARGO_HOME/bin
-  $HOME/.local/share/notebooklm-py/.venv/bin
   $BREW_PREFIX/sbin
   $BREW_PREFIX/opt/openjdk/bin
   $BREW_PREFIX/opt/llvm/bin
