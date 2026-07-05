@@ -17,6 +17,8 @@ if [ -f "/opt/homebrew/bin/brew" ]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
 elif [ -f "/usr/local/bin/brew" ]; then
     eval "$(/usr/local/bin/brew shellenv)"
+elif [ -f "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
 # 2. install mise via homebrew
@@ -32,13 +34,7 @@ echo "--> Installing rust and python via mise..."
 mise use -g rust@latest 1> /dev/null
 mise use -g python@latest 1> /dev/null
 
-# 4. install oh-my-zsh
-if [ ! -d "$HOME/.oh-my-zsh" ]; then
-    echo "--> Installing oh-my-zsh..."
-    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-else
-    echo "--> Oh-my-Zsh! $ALREADYINSTALLED"
-fi
+# (Oh-my-Zsh installation moved to after bkzyn setup)
 
 # 5. link the current repository to $XDG_DATA_HOME/backup
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/backup"
@@ -70,4 +66,28 @@ export PATH="$HOME/.local/bin:$PATH"
 
 bkzyn setup
 
-echo "--> Setup complete!"
+# 9. install oh-my-zsh (after zsh is guaranteed installed by brew)
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
+    echo "--> Installing oh-my-zsh..."
+    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+else
+    echo "--> Oh-my-Zsh! $ALREADYINSTALLED"
+fi
+
+# 10. Change default shell to zsh
+if command -v zsh >/dev/null 2>&1; then
+    ZSH_PATH="$(command -v zsh)"
+    if [ "$SHELL" != "$ZSH_PATH" ]; then
+        echo "--> Changing default shell to zsh ($ZSH_PATH)..."
+        # Ensure it is in /etc/shells
+        if ! grep -Fxq "$ZSH_PATH" /etc/shells; then
+            echo "--> Adding $ZSH_PATH to /etc/shells (requires sudo)..."
+            echo "$ZSH_PATH" | sudo tee -a /etc/shells > /dev/null
+        fi
+        
+        # Change shell
+        chsh -s "$ZSH_PATH" "$USER" || sudo chsh -s "$ZSH_PATH" "$USER"
+    fi
+fi
+
+echo "--> Setup complete! Please restart your terminal or log out/in."

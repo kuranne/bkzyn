@@ -26,12 +26,18 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
     // 2. copy config/* to $XDG_CONFIG_HOME
     super::restore::run(paths, dry_run, verbose)?;
 
-    // 3. add a line in /etc/zshenv to use $ZDOTDIR for zsh
-    ui.status("INFO", "Setup", "Checking /etc/zshenv for ZDOTDIR configuration...");
+    // 3. add a line in global zshenv to use $ZDOTDIR for zsh
+    let zshenv_path = if std::path::Path::new("/etc/zsh").exists() {
+        "/etc/zsh/zshenv"
+    } else {
+        "/etc/zshenv"
+    };
 
-    let zshenv_content = fs::read_to_string("/etc/zshenv").unwrap_or_default();
+    ui.status("INFO", "Setup", &format!("Checking {} for ZDOTDIR configuration...", zshenv_path));
+
+    let zshenv_content = fs::read_to_string(zshenv_path).unwrap_or_default();
     if !zshenv_content.contains("ZDOTDIR") {
-        ui.status("INFO", "Setup", "Adding ZDOTDIR to /etc/zshenv (requires sudo)...");
+        ui.status("INFO", "Setup", &format!("Adding ZDOTDIR to {} (requires sudo)...", zshenv_path));
 
         let snippet = r#"
 # --- XDG & ZDOTDIR bootstrap ---
@@ -47,7 +53,7 @@ fi
             let mut child = Command::new("sudo")
                 .arg("tee")
                 .arg("-a")
-                .arg("/etc/zshenv")
+                .arg(zshenv_path)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::null())
                 .spawn()?;
@@ -58,7 +64,7 @@ fi
             child.wait()?;
         }
     } else {
-        ui.status("SKIP", "Setup", "ZDOTDIR already configured in /etc/zshenv.");
+        ui.status("SKIP", "Setup", &format!("ZDOTDIR already configured in {}.", zshenv_path));
     }
 
     ui.done("Successful setup");

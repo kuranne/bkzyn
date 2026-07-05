@@ -39,10 +39,7 @@ impl AppPaths {
                 .unwrap_or_else(|_| home.join(".local/share"))
                 .join("backup");
             Ok(Self {
-                config: std::env::var("XDG_CONFIG_HOME")
-                    .map(std::path::PathBuf::from)
-                    .unwrap_or_else(|_| home.join(".config"))
-                    .join("backup"),
+                config: repo.join("config"),
                 old: repo.join(".old"),
                 repo,
                 xdg_config: std::env::var("XDG_CONFIG_HOME")
