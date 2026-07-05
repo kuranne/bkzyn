@@ -4,18 +4,28 @@ use std::path::Path;
 use std::path::PathBuf;
 
 /// Restores configuration symlinks from repository config directory to the system.
-pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    paths: &crate::AppPaths,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
     if !paths.config.exists() {
         return Err("No config directory found in the repository.".into());
     }
 
-    ui.status("INFO", "Restore", &format!("Restoring configs to {}", paths.xdg_config.display()));
+    ui.status(
+        "INFO",
+        "Restore",
+        &format!("Restoring configs to {}", paths.xdg_config.display()),
+    );
 
     if !dry_run {
         fs::create_dir_all(&paths.xdg_config)?;
     }
+
+    // 1. Restore configuration symlinks
 
     for entry in fs::read_dir(&paths.config)? {
         let entry = entry?;
@@ -23,7 +33,11 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
         let dest_path = paths.xdg_config.join(entry.file_name());
         let app_name = entry.file_name().to_string_lossy().into_owned();
 
-        ui.status("LINK", &app_name, &format!("{} -> {}", src_path.display(), dest_path.display()));
+        ui.status(
+            "LINK",
+            &app_name,
+            &format!("{} -> {}", src_path.display(), dest_path.display()),
+        );
 
         if !dry_run {
             if dest_path.exists() {
@@ -31,12 +45,19 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
                 let meta = fs::symlink_metadata(&dest_path)?;
                 if meta.is_dir() {
                     let backup_path = PathBuf::from(format!("{}.bak", dest_path.display()));
-                    ui.status("BACKUP", &app_name, &format!("{} -> {}", dest_path.display(), backup_path.display()));
+                    ui.status(
+                        "BACKUP",
+                        &app_name,
+                        &format!("{} -> {}", dest_path.display(), backup_path.display()),
+                    );
                     fs::rename(&dest_path, &backup_path)?;
                 } else {
                     // For files or symlinks, just remove them to replace with symlink
                     if let Err(e) = fs::remove_file(&dest_path) {
-                        ui.warn("Restore", &format!("Failed to remove {}: {}", dest_path.display(), e));
+                        ui.warn(
+                            "Restore",
+                            &format!("Failed to remove {}: {}", dest_path.display(), e),
+                        );
                         continue;
                     }
                 }

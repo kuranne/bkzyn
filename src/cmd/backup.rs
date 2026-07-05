@@ -5,7 +5,11 @@ use std::fs;
 use tar::Builder;
 
 /// Backs up local configurations to the repository config directory.
-pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    paths: &crate::AppPaths,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
     if !paths.old.exists() {
@@ -18,7 +22,11 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
         let archive_name = format!("config_{}.tar.zst", date_str);
         let archive_path = paths.old.join(&archive_name);
 
-        ui.status("INFO", "Backup", &format!("Backing up current config to {}", archive_path.display()));
+        ui.status(
+            "INFO",
+            "Backup",
+            &format!("Backing up current config to {}", archive_path.display()),
+        );
 
         if !dry_run {
             let tar_zst_file = fs::File::create(&archive_path)?;
@@ -31,7 +39,7 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
     }
 
     // 2. Read config
-    let toml_path = paths.repo.join("backup.toml");
+    let toml_path = paths.config.join("backup").join("backup.toml");
     if !toml_path.exists() {
         return Err("backup.toml not found in repository directory".into());
     }
@@ -44,13 +52,23 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
 
     for app in config.configs {
         if app.contains('/') || app.contains('\\') || app == ".." || app == "." {
-            ui.warn("Security", &format!("Skipping invalid app name '{}' to prevent path traversal.", app));
+            ui.warn(
+                "Security",
+                &format!(
+                    "Skipping invalid app name '{}' to prevent path traversal.",
+                    app
+                ),
+            );
             continue;
         }
 
         let src_path = paths.xdg_config.join(&app);
         if !src_path.exists() {
-            ui.status("SKIP", &app, &format!("Not found at {}", src_path.display()));
+            ui.status(
+                "SKIP",
+                &app,
+                &format!("Not found at {}", src_path.display()),
+            );
             continue;
         }
 
@@ -84,9 +102,10 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
 
             // Skip directories and non-regular files (like sockets, fifos, etc.)
             let file_type = entry.file_type();
-            if file_type.as_ref().map_or(true, |ft| {
-                ft.is_dir() || (!ft.is_file() && !ft.is_symlink())
-            }) {
+            if file_type
+                .as_ref()
+                .is_none_or(|ft| ft.is_dir() || (!ft.is_file() && !ft.is_symlink()))
+            {
                 continue;
             }
 
@@ -115,7 +134,10 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
 
                 // Gracefully catch copy errors so it doesn't crash the whole backup
                 if let Err(e) = fs::copy(entry.path(), &dest_file) {
-                    ui.warn("Copy", &format!("Failed to copy {} ({}) - skipping.", rel_path.display(), e));
+                    ui.warn(
+                        "Copy",
+                        &format!("Failed to copy {} ({}) - skipping.", rel_path.display(), e),
+                    );
                 }
             }
         }
