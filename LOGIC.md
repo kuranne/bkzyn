@@ -8,68 +8,85 @@ A centralized backup repository for managing, restoring, and updating macOS conf
 
 ## Workflows
 
-### 1. Bootstrap Setup
+### 1. Bootstrap Setup (`install.sh` & `bkzyn setup`)
 
 Automates the configuration and package installation on macOS:
 
-- **Homebrew**: Installs Homebrew and sets up shell environments.
-- **Mise**: Installs `mise` tool manager.
-- **Configuration Symlinks**: Safe-links config directories from `./config` to `$HOME/.config/`. Backs up pre-existing configurations as `.bak`.
-- **Mise Install**: Pre-installs configured language runtimes non-interactively.
-- **Zsh Setup**: Bootstraps `$XDG_CONFIG_HOME` and `$ZDOTDIR` in `/etc/zshenv`.
+- **Homebrew**: Installs Homebrew and sets up shell environments (via `install.sh`).
+- **Mise**: Installs `mise` tool manager and uses it to install global versions of rust and python.
+- **Repository Setup**: Links the current repository to `$XDG_DATA_HOME/backup` (or `~/.local/share/backup`), compiles the CLI tool (`bkzyn`), and places it into `~/.local/bin`.
+- **Oh-My-Zsh**: Installs Oh-My-Zsh unattended, and sets zsh as the default shell.
+- **Configuration Symlinks**: Symlinks config directories from the repository to `$XDG_CONFIG_HOME` (`$HOME/.config/`).
 - **Brew Bundle**: Installs packages listed in `Brewfile`.
+- **Zsh Setup**: Bootstraps `$XDG_CONFIG_HOME` and `$ZDOTDIR` in `/etc/zshenv` to keep `$HOME` clean.
 
-### 2. Backup Sync
+### 2. Backup Sync (`bkzyn backup`)
 
 Synchronizes changes from local system configurations back into the repository:
 
-- **Config Resolution**: Determines the current config root path (`$XDG_CONFIG_HOME` or `$HOME/.config`).
-- **Selective Sync**: For each folder tracked in `backup.toml`, copies modified items from local config back into the repository config directory, ensuring only tracked assets are updated.
+- **Archiving**: Backs up existing repository configs into `.old/config_$date.tar.zst` using `zstd` compression.
+- **Config Resolution**: Looks for `backup.toml` in `$XDG_CONFIG_HOME/backup/` first, falling back to the repository.
+- **Selective Sync**: For each app tracked in `backup.toml`, copies modified items from the local config back into the repository `config/` directory, respecting explicit `include` and `exclude` glob patterns.
+
+### 3. Managing tracked files
+
+Easily track new configurations or modify patterns without manually editing `backup.toml`:
+
+- **`bkzyn add <path>`**: Moves a directory or file from `$XDG_CONFIG_HOME` into the backup repository, creates a symlink back to the original location, and registers it in `backup.toml`.
+- **`bkzyn include <app> <pattern>` / `bkzyn exclude <app> <pattern>`**: Quickly updates the glob patterns in `backup.toml` for fine-grained control.
+- **`bkzyn save [-m message]`**: Automates committing all modifications to the Git repository.
+
+---
 
 ## Purpose
 
-All in one cli tool which write in Rust, for backup dotfiles, data and some other important thing and setup on another device.
+An all-in-one CLI tool written in Rust for backing up dotfiles, data, and configurations, and seamlessly setting them up on another device.
 
-There must
+- Splits massive logic into distinct commands (`cmd/backup.rs`, `cmd/setup.rs`, etc.) for maintainability.
+- Path management and core logic abstracted away in `lib.rs`.
 
-1. A shell script for directly curl content from [github](https://github.com/kuranne/backup.git)
-   - In shell script (write in bash): install homebrew first then install mise via homebrew.
-   - use mise to install rust and python to compile command line
-   - install oh-my-zsh
-   - clone the github repository to `$XDG_DATA_HOME/backup`, cd then compile.
-   - After compiled, move binary to `~/.local/bin`
-   - Use the command line to cp `./config/*` to `$XDG_CONFIG_HOME` and rest operator.
+---
 
-2. A command line write from Rust
-   - There must split massive function to each file.rs, good for maintain.
-   - Core of command such backup sync, setup must write as lib.rs
+## CLI Commands
 
-## Backup command
+Name: `bkzyn`
+Global flags:
 
-Name: bkzyn
-Subcommand: backup, setup, restore  
-flags:
--v verbose
---dry dry run
+- `-v`, `--verbose`: Enable verbose logging output
+- `--dry-run`: Run without making any modifications to the filesystem
 
-Use backup.toml as main config file where found on the top of this repository, and make it support for XDG base.
+### Subcommands
 
-### bkzyn backup
+#### `bkzyn backup`
 
-list files in config which one must to back up then copy ./config/ to .old/config\_$date ($date is ISO8601 date format) then use zstd to compress .old/config\_$date.
+Reads `backup.toml` for include/exclude patterns and synchronizes apps from `$XDG_CONFIG_HOME` to the repository `config/` folder. It safely archives the previous state in `.old/` before syncing.
 
-read config file for include and exclude files/folder then copy them to new ./config/ (In exclude files has same as list files in old backup or same as include files, recarding to exclude first and ignore include and list files, but don't delete old config just keep it)
+#### `bkzyn setup`
 
-### bkzyn setup
+Bootstraps the environment by symlinking `config/*` to `$XDG_CONFIG_HOME`, running `brew bundle` with the provided `Brewfile`, and setting up `/etc/zshenv`.
 
-- brew bundle a Brewfile
-- copy config/\* to $XDG_CONFIG_HOME
-- add a line in /etc/zshrc or /etc/zshenv to use $ZDOTDIR for zsh
+#### `bkzyn restore`
 
-### bkzyn restore
+Specifically restores the configuration by symlinking `config/*` from the repository to `$XDG_CONFIG_HOME` (bypassing `Brewfile` and environment bootstrapping).
 
-- copy config/\* to $XDG_CONFIG_HOME
+#### `bkzyn add <path>`
+
+Moves a configuration file or folder from your local `~/.config` into the backup repository and replaces it with a symlink.
+
+#### `bkzyn include <app> <pattern>`
+
+Adds an include pattern for an app in `backup.toml`.
+
+#### `bkzyn exclude <app> <pattern>`
+
+Adds an exclude pattern for an app in `backup.toml`.
+
+#### `bkzyn save [-m message]`
+
+Stages all changes in the backup repository and creates a Git commit automatically.
+
+---
 
 ## Toml config file
 
-see ./backup.toml for learn config.
+The primary configuration file is `backup.toml` (located at `$XDG_CONFIG_HOME/backup/backup.toml` or the repository root). It maintains a list of tracked apps and their include/exclude patterns using glob syntax.

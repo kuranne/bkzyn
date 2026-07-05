@@ -1,5 +1,5 @@
+use bkzyn::cmd::{add, backup, pattern, restore, save, setup};
 use clap::{Parser, Subcommand};
-use bkzyn::cmd::{backup, setup, restore};
 use std::process;
 
 #[derive(Parser)]
@@ -24,19 +24,106 @@ enum Commands {
     Setup,
     /// Restore configuration symlinks from repository to local system
     Restore,
+    /// Move a configuration into the backup repository and symlink it back
+    Add {
+        /// The path to the file or directory in ~/.config to add
+        path: std::path::PathBuf,
+    },
+    /// Add an include pattern for an app in backup.toml
+    Include {
+        /// The name of the app
+        app: String,
+        /// The pattern to include
+        pattern: String,
+    },
+    /// Add an exclude pattern for an app in backup.toml
+    Exclude {
+        /// The name of the app
+        app: String,
+        /// The pattern to exclude
+        pattern: String,
+    },
+    /// Save (commit) all modifications to the Git repository
+    Save {
+        /// Optional commit message
+        #[arg(short, long)]
+        message: Option<String>,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
+    let paths = bkzyn::AppPaths::new().unwrap_or_else(|e| {
+        eprintln!("Error resolving paths: {}", e);
+        process::exit(1);
+    });
 
-    let result = match &cli.command {
-        Commands::Backup => backup::run(cli.dry_run, cli.verbose),
-        Commands::Setup => setup::run(cli.dry_run, cli.verbose),
-        Commands::Restore => restore::run(cli.dry_run, cli.verbose),
-    };
+    if cli.verbose {
+        let ui = bkzyn::cli::CliManager::new(true);
+        ui.status(
+            "INFO",
+            "Paths",
+            &format!("Repository: {}", paths.repo.display()),
+        );
+        ui.status(
+            "INFO",
+            "Paths",
+            &format!("XDG Config: {}", paths.xdg_config.display()),
+        );
+    }
 
-    if let Err(e) = result {
+    if let Err(e) = match &cli.command {
+        Commands::Backup => backup::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Setup => setup::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Add { path } => add::run(&paths, path, cli.dry_run, cli.verbose),
+        Commands::Include { app, pattern: pat } => {
+            pattern::run(&paths, app, pat, true, cli.dry_run, cli.verbose)
+        }
+        Commands::Exclude { app, pattern: pat } => {
+            pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
+        }
+        Commands::Save { message } => save::run(&paths, message.as_ref(), cli.dry_run, cli.verbose),
+    } {
         eprintln!("Error: {}", e);
         process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn test_backup_command() {
+        let args = vec!["bkzyn", "backup"];
+        let cli = Cli::parse_from(args);
+        assert!(!cli.verbose);
+        assert!(!cli.dry_run);
+        assert!(matches!(cli.command, Commands::Backup));
+    }
+
+    #[test]
+    fn test_setup_command() {
+        let args = vec!["bkzyn", "--verbose", "setup"];
+        let cli = Cli::parse_from(args);
+        assert!(cli.verbose);
+        assert!(!cli.dry_run);
+        assert!(matches!(cli.command, Commands::Setup));
+    }
+
+    #[test]
+    fn test_restore_command_dry_run() {
+        let args = vec!["bkzyn", "--dry-run", "restore"];
+        let cli = Cli::parse_from(args);
+        assert!(!cli.verbose);
+        assert!(cli.dry_run);
+        assert!(matches!(cli.command, Commands::Restore));
     }
 }
