@@ -54,11 +54,15 @@ typeset -U path fpath
 # Identify Homebrew location dynamically but safely
 if [[ -d "/opt/homebrew" ]]; then
     BREW_PREFIX="/opt/homebrew"
+elif [[ -d "/usr/local" ]]; then
+    BREW_PREFIX="/usr/local"
 fi
 
 path=(
   $HOME/.local/bin
   $CARGO_HOME/bin
+  $HOME/.nix-profile/bin
+  /run/current-system/sw/bin
   $BREW_PREFIX/sbin
   $BREW_PREFIX/opt/openjdk/bin
   $BREW_PREFIX/opt/llvm/bin

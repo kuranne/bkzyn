@@ -31,31 +31,46 @@ setopt HIST_FIND_NO_DUPS
 # COMPLETION & FPATHs
 # ==============================================================================
 
-if command -v brew > /dev/null; then
-    fpath=(
-      $BREW_PREFIX/share/zsh/site-functions
-      $BREW_PREFIX/share/zsh-completions
-      $DOCKER_CONFIG/completions
-      $fpath
-    )
+fpath=(
+  $HOME/.nix-profile/share/zsh/site-functions
+  $HOME/.nix-profile/share/zsh-completions
+  /run/current-system/sw/share/zsh/site-functions
+  /run/current-system/sw/share/zsh-completions
+  $BREW_PREFIX/share/zsh/site-functions
+  $BREW_PREFIX/share/zsh-completions
+  $DOCKER_CONFIG/completions
+  $fpath
+)
 
-    # Define custom plugin sources for later activation
-    typeset -U source_files=(
-      $XDG_DATA_HOME/go/bin
+# Define custom plugin sources for later activation
+typeset -U source_files=(
+  $XDG_DATA_HOME/go/bin
+  # Manual Scripts Extension
+  $ZDOTDIR/fzf.zsh
+  $ZDOTDIR/aliases.zsh
+  $ZDOTDIR/binding.zsh
+)
 
-      $BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-      $BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-      $BREW_PREFIX/share/zsh-autopair/autopair.zsh
-      
-      $BREW_PREFIX/opt/fzf/shell/key-bindings.zsh
-      $BREW_PREFIX/opt/fzf/shell/completion.zsh
+# Hybrid package manager plugin loading (Nix + Homebrew)
+local prefixes=("$HOME/.nix-profile" "/run/current-system/sw" "/opt/homebrew" "/usr/local")
+local plugins=(
+  "share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+  "share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+  "share/zsh-autopair/autopair.zsh"
+  "share/fzf/key-bindings.zsh"
+  "share/fzf/completion.zsh"
+  "opt/fzf/shell/key-bindings.zsh"
+  "opt/fzf/shell/completion.zsh"
+)
 
-      # Manual Scripts Extension
-      $ZDOTDIR/fzf.zsh
-      $ZDOTDIR/aliases.zsh
-      $ZDOTDIR/binding.zsh
-    )
-fi
+for plugin in "${plugins[@]}"; do
+  for prefix in "${prefixes[@]}"; do
+    if [[ -f "$prefix/$plugin" ]]; then
+      source_files+=("$prefix/$plugin")
+      break
+    fi
+  done
+done
 
 # --- Oh-My-Zsh Framework ---
 export ZSH="$XDG_DATA_HOME/oh-my-zsh"
@@ -122,6 +137,8 @@ fi
 path=(
   $HOME/.local/bin
   $CARGO_HOME/bin
+  $HOME/.nix-profile/bin
+  /run/current-system/sw/bin
   $BREW_PREFIX/sbin
   $BREW_PREFIX/opt/openjdk/bin
   $BREW_PREFIX/opt/llvm/bin
