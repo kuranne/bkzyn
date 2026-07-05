@@ -1,5 +1,5 @@
+use bkzyn::cmd::{add, backup, pattern, restore, save, setup};
 use clap::{Parser, Subcommand};
-use bkzyn::cmd::{backup, setup, restore};
 use std::process;
 
 #[derive(Parser)]
@@ -24,6 +24,31 @@ enum Commands {
     Setup,
     /// Restore configuration symlinks from repository to local system
     Restore,
+    /// Move a configuration into the backup repository and symlink it back
+    Add {
+        /// The path to the file or directory in ~/.config to add
+        path: std::path::PathBuf,
+    },
+    /// Add an include pattern for an app in backup.toml
+    Include {
+        /// The name of the app
+        app: String,
+        /// The pattern to include
+        pattern: String,
+    },
+    /// Add an exclude pattern for an app in backup.toml
+    Exclude {
+        /// The name of the app
+        app: String,
+        /// The pattern to exclude
+        pattern: String,
+    },
+    /// Save (commit) all modifications to the Git repository
+    Save {
+        /// Optional commit message
+        #[arg(short, long)]
+        message: Option<String>,
+    },
 }
 
 fn main() {
@@ -33,10 +58,32 @@ fn main() {
         process::exit(1);
     });
 
+    if cli.verbose {
+        let ui = bkzyn::cli::CliManager::new(true);
+        ui.status(
+            "INFO",
+            "Paths",
+            &format!("Repository: {}", paths.repo.display()),
+        );
+        ui.status(
+            "INFO",
+            "Paths",
+            &format!("XDG Config: {}", paths.xdg_config.display()),
+        );
+    }
+
     if let Err(e) = match &cli.command {
         Commands::Backup => backup::run(&paths, cli.dry_run, cli.verbose),
         Commands::Setup => setup::run(&paths, cli.dry_run, cli.verbose),
         Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Add { path } => add::run(&paths, path, cli.dry_run, cli.verbose),
+        Commands::Include { app, pattern: pat } => {
+            pattern::run(&paths, app, pat, true, cli.dry_run, cli.verbose)
+        }
+        Commands::Exclude { app, pattern: pat } => {
+            pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
+        }
+        Commands::Save { message } => save::run(&paths, message.as_ref(), cli.dry_run, cli.verbose),
     } {
         eprintln!("Error: {}", e);
         process::exit(1);

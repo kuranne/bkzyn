@@ -32,18 +32,27 @@ impl CliManager {
                 "WARN" => RED,
                 _ => RESET,
             };
-            println!("{}[ {}{}{}{} ] {}{}{}: {}", BOLD, color, status, RESET, BOLD, BOLD, title, RESET, desc);
+            println!(
+                "{}[ {}{}{}{} ] {}{}{}: {}",
+                BOLD, color, status, RESET, BOLD, BOLD, title, RESET, desc
+            );
         }
     }
 
     /// Prints a done/success message.
     pub fn done(&self, desc: &str) {
-        println!("{}[ {}{}{}{} ] {}{}{}", BOLD, GREEN, "DONE", RESET, BOLD, BOLD, desc, RESET);
+        println!(
+            "{}[ {}DONE{}{} ] {}{}{}",
+            BOLD, GREEN, RESET, BOLD, BOLD, desc, RESET
+        );
     }
 
     /// Prints a warning message.
     pub fn warn(&self, title: &str, desc: &str) {
-        println!("{}[ {}{}{}{} ] {}{}{}: {}", BOLD, RED, "WARN", RESET, BOLD, BOLD, title, RESET, desc);
+        println!(
+            "{}[ {}WARN{}{} ] {}{}{}: {}",
+            BOLD, RED, RESET, BOLD, BOLD, title, RESET, desc
+        );
     }
 }
 

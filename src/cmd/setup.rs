@@ -3,7 +3,11 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 /// Sets up brew packages and copies or links configurations.
-pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(
+    paths: &crate::AppPaths,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
     // 1. brew bundle
@@ -16,7 +20,10 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
                 .arg(format!("--file={}", brewfile.display()))
                 .status()?;
             if !status.success() {
-                ui.warn("Setup", &format!("brew bundle failed with status: {}", status));
+                ui.warn(
+                    "Setup",
+                    &format!("brew bundle failed with status: {}", status),
+                );
             }
         }
     } else {
@@ -33,11 +40,19 @@ pub fn run(paths: &crate::AppPaths, dry_run: bool, verbose: bool) -> Result<(), 
         "/etc/zshenv"
     };
 
-    ui.status("INFO", "Setup", &format!("Checking {} for ZDOTDIR configuration...", zshenv_path));
+    ui.status(
+        "INFO",
+        "Setup",
+        &format!("Checking {} for ZDOTDIR configuration...", zshenv_path),
+    );
 
     let zshenv_content = fs::read_to_string(zshenv_path).unwrap_or_default();
     if !zshenv_content.contains("ZDOTDIR") {
-        ui.status("INFO", "Setup", &format!("Adding ZDOTDIR to {} (requires sudo)...", zshenv_path));
+        ui.status(
+            "INFO",
+            "Setup",
+            &format!("Adding ZDOTDIR to {} (requires sudo)...", zshenv_path),
+        );
 
         let snippet = r#"
 # --- XDG & ZDOTDIR bootstrap ---
@@ -64,7 +79,11 @@ fi
             child.wait()?;
         }
     } else {
-        ui.status("SKIP", "Setup", &format!("ZDOTDIR already configured in {}.", zshenv_path));
+        ui.status(
+            "SKIP",
+            "Setup",
+            &format!("ZDOTDIR already configured in {}.", zshenv_path),
+        );
     }
 
     ui.done("Successful setup");

@@ -1,8 +1,8 @@
 //! Core functions and path management for the bkzyn backup tool.
 
+pub mod cli;
 pub mod cmd;
 pub mod config;
-pub mod cli;
 
 /// Paths configuration for the application.
 pub struct AppPaths {
@@ -34,10 +34,16 @@ impl AppPaths {
                     .unwrap_or_else(|_| home.join(".config")),
             })
         } else {
-            let repo = std::env::var("XDG_DATA_HOME")
+            let mut repo = std::env::var("XDG_DATA_HOME")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| home.join(".local/share"))
                 .join("backup");
+
+            // Resolve the symlink so we execute Git and file modifications in the true source directory
+            if let Ok(real_path) = std::fs::canonicalize(&repo) {
+                repo = real_path;
+            }
+
             Ok(Self {
                 config: repo.join("config"),
                 old: repo.join(".old"),
