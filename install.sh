@@ -31,9 +31,11 @@ mise use -g rust@latest 1> /dev/null
 mise use -g python@latest 1> /dev/null
 
 # 4. install oh-my-zsh
-if [ ! -d "$HOME/.oh-my-zsh" ]; then
+if [[ ! -d "$XDG_DATA_HOME/.oh-my-zsh" && ! -d "$HOME/.oh-my-zsh" ]] && ! command -v omz &> /dev/null; then
     echo "--> Installing oh-my-zsh..."
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+else
+    echo "--> Oh-my-Zsh! $ALREADYINSTALLED"
 fi
 
 # 5. clone the github repository to $XDG_DATA_HOME/backup
