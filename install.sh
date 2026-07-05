@@ -31,7 +31,7 @@ mise use -g rust@latest 1> /dev/null
 mise use -g python@latest 1> /dev/null
 
 # 4. install oh-my-zsh
-if [[ ! -d "$XDG_DATA_HOME/.oh-my-zsh" && ! -d "$HOME/.oh-my-zsh" ]] && ! command -v omz &> /dev/null; then
+if [ ! command -v omz &> /dev/null ]; then
     echo "--> Installing oh-my-zsh..."
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 else
