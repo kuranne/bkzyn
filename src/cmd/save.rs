@@ -22,11 +22,35 @@ pub fn run(
     );
 
     if !dry_run {
-        // 1. Git add
+        // 1. Determine current branch
+        let current_branch_out = Command::new("git")
+            .current_dir(&paths.repo)
+            .args(["branch", "--show-current"])
+            .output()?;
+        let current_branch = String::from_utf8_lossy(&current_branch_out.stdout).trim().to_string();
+
+        let target_branch = "backup";
+
+        // 2. Checkout or create target branch
+        ui.status("INFO", "Git", &format!("Switching to {} branch...", target_branch));
+        let checkout_status = Command::new("git")
+            .current_dir(&paths.repo)
+            .args(["checkout", target_branch])
+            .status()?;
+        
+        if !checkout_status.success() {
+            // Branch doesn't exist locally, create it
+            Command::new("git")
+                .current_dir(&paths.repo)
+                .args(["checkout", "-b", target_branch])
+                .status()?;
+        }
+
+        // 3. Git add
         let add_path = if let Some(cat) = category {
             format!("data/{}", cat)
         } else {
-            ".".to_string()
+            "data".to_string() // Instead of ".", only add data/ so we don't accidentally commit src/ changes
         };
 
         let add_status = Command::new("git")
@@ -38,7 +62,7 @@ pub fn run(
             return Err("Failed to execute `git add`".into());
         }
 
-        // 2. Git commit
+        // 4. Git commit
         let commit_status = Command::new("git")
             .current_dir(&paths.repo)
             .args(["commit", "-m", commit_message])
@@ -57,7 +81,25 @@ pub fn run(
             );
         }
 
-        // Optional: you could add a `git push` here if the user wanted it
+        // 5. Git push
+        ui.status("INFO", "Git", &format!("Pushing {} to origin...", target_branch));
+        let push_status = Command::new("git")
+            .current_dir(&paths.repo)
+            .args(["push", "-u", "origin", target_branch])
+            .status()?;
+        
+        if !push_status.success() {
+            ui.warn("Git", "Failed to push to origin. (Are you offline or lacking permissions?)");
+        }
+
+        // 6. Return to original branch
+        if !current_branch.is_empty() && current_branch != target_branch {
+            ui.status("INFO", "Git", &format!("Switching back to {}...", current_branch));
+            Command::new("git")
+                .current_dir(&paths.repo)
+                .args(["checkout", &current_branch])
+                .status()?;
+        }
     } else {
         ui.status(
             "SKIP",
