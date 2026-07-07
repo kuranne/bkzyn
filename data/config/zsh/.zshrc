@@ -88,6 +88,7 @@ plugins=(
   eza 
   node
   command-not-found
+  rust
 )
 
 # OMZ internal script will automatically call compinit using our modified fpath

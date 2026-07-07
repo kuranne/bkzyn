@@ -1,0 +1,5 @@
+nix = ["git", "neovim", "atuin"]
+yay = ["spotify-aur", "nerd-fonts-meta"]
+pacman = ["git", "neovim"]
+brew = ["git"]
+apt = ["git"]
