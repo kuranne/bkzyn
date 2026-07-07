@@ -47,8 +47,10 @@ enum Commands {
         /// The pattern to exclude
         pattern: String,
     },
-    /// Save (commit) all modifications to the Git repository
+    /// Save (commit) modifications to the Git repository
     Save {
+        /// Optional specific category to save (e.g. "config")
+        category: Option<String>,
         /// Optional commit message
         #[arg(short, long)]
         message: Option<String>,
@@ -87,7 +89,7 @@ fn main() {
         Commands::Exclude { app, pattern: pat } => {
             pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
         }
-        Commands::Save { message } => save::run(&paths, message.as_ref(), cli.dry_run, cli.verbose),
+        Commands::Save { category, message } => save::run(&paths, category.as_deref(), message.as_deref(), cli.dry_run, cli.verbose),
     } {
         eprintln!("Error: {}", e);
         process::exit(1);
