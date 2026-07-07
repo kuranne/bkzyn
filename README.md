@@ -18,8 +18,8 @@ A centralized repository and robust CLI tool to manage, restore, and update macO
 To bootstrap the system on a new machine, clone the repository and run the installation script:
 
 ```bash
-git clone https://github.com/kuranne/backup.git ~/.local/share/backup
-cd ~/.local/share/backup
+git clone https://github.com/kuranne/bkzyn.git ~/.local/share/bkzyn
+cd ~/.local/share/bkzyn
 ./install.sh
 ```
 
@@ -108,7 +108,7 @@ Instead of editing `backup.toml` by hand, use the provided subcommands:
    ```toml
    size = {{ host.font_size }}
    ```
-When `bkzyn restore` runs, it will parse the template, inject the values, and render it to `~/.config/.../alacritty.toml` without `.tmpl` in the filename.
+   When `bkzyn restore` runs, it will parse the template, inject the values, and render it to `~/.config/.../alacritty.toml` without `.tmpl` in the filename.
 
 ### Version Control
 
