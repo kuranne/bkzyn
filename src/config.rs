@@ -7,6 +7,8 @@ use std::path::Path;
 pub struct BackupConfig {
     pub include: Option<Vec<String>>,
     pub exclude: Option<Vec<String>>,
+    pub includes: Option<HashMap<String, RuleMap>>,
+    pub excludes: Option<HashMap<String, RuleMap>>,
     #[serde(flatten)]
     pub items: HashMap<String, CategoryOrApp>,
 }
@@ -24,6 +26,13 @@ pub struct CategoryOrApp {
 pub struct ItemConfig {
     pub include: Option<Vec<String>>,
     pub exclude: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum RuleMap {
+    AppList(Vec<String>),
+    CategoryMap(HashMap<String, Vec<String>>),
 }
 
 impl BackupConfig {
