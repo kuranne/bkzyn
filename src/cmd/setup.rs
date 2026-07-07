@@ -219,4 +219,15 @@ nix = ["world"]
         let result = run(&paths, true, false);
         assert!(result.is_ok(), "Setup dry_run should succeed without executing system commands");
     }
+
+    #[test]
+    fn test_setup_invalid_packages_toml_warns_but_succeeds() {
+        let (_dir, paths) = setup_test_env();
+        let pkg_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&pkg_dir).unwrap();
+        fs::write(pkg_dir.join("packages.toml"), "invalid [ toml {").unwrap();
+
+        let result = run(&paths, true, false);
+        assert!(result.is_ok(), "Setup should warn on bad toml but still succeed");
+    }
 }

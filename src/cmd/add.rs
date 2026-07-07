@@ -159,3 +159,48 @@ fn copy_dir_all(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppPaths;
+    use tempfile::tempdir;
+
+    fn setup_test_env() -> (tempfile::TempDir, AppPaths) {
+        let dir = tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        let paths = AppPaths {
+            repo: base.clone(),
+            config: base.join("data").join("config"),
+            data: base.join("data").join("share"),
+            old: base.join("old"),
+            xdg_config: base.join("xdg_config"),
+            xdg_data: base.join("xdg_data"),
+        };
+        fs::create_dir_all(&paths.config).unwrap();
+        fs::create_dir_all(&paths.xdg_config).unwrap();
+        (dir, paths)
+    }
+
+    #[test]
+    fn test_add_outside_xdg_fails() {
+        let (_dir, paths) = setup_test_env();
+        let outside_path = paths.repo.join("outside.txt");
+        fs::write(&outside_path, "test").unwrap();
+        
+        let result = run(&paths, &outside_path, false, false);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Only paths inside"));
+    }
+
+    #[test]
+    fn test_add_nonexistent_path_fails() {
+        let (_dir, paths) = setup_test_env();
+        let bad_path = paths.xdg_config.join("does_not_exist");
+        
+        let result = run(&paths, &bad_path, false, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
+    }
+}
