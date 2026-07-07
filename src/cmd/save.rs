@@ -23,7 +23,7 @@ pub fn run(
 
     if !dry_run {
         let backup_repo = paths.repo.join("data");
-        
+
         // Auto-initialize git if the data folder was wiped
         if !backup_repo.join(".git").exists() {
             if !backup_repo.exists() {
@@ -41,17 +41,23 @@ pub fn run(
             .current_dir(&backup_repo)
             .args(["branch", "--show-current"])
             .output()?;
-        let current_branch = String::from_utf8_lossy(&current_branch_out.stdout).trim().to_string();
+        let current_branch = String::from_utf8_lossy(&current_branch_out.stdout)
+            .trim()
+            .to_string();
 
         let target_branch = "backup";
 
         // 2. Checkout or create target branch
-        ui.status("INFO", "Git", &format!("Switching to {} branch...", target_branch));
+        ui.status(
+            "INFO",
+            "Git",
+            &format!("Switching to {} branch...", target_branch),
+        );
         let checkout_status = Command::new("git")
             .current_dir(&backup_repo)
             .args(["checkout", target_branch])
             .status()?;
-        
+
         if !checkout_status.success() {
             // Branch doesn't exist locally, create it
             Command::new("git")
@@ -96,19 +102,30 @@ pub fn run(
         }
 
         // 5. Git push
-        ui.status("INFO", "Git", &format!("Pushing {} to origin...", target_branch));
+        ui.status(
+            "INFO",
+            "Git",
+            &format!("Pushing {} to origin...", target_branch),
+        );
         let push_status = Command::new("git")
             .current_dir(&backup_repo)
             .args(["push", "-u", "origin", target_branch])
             .status()?;
-        
+
         if !push_status.success() {
-            ui.warn("Git", "Failed to push to origin. (Are you offline or lacking permissions?)");
+            ui.warn(
+                "Git",
+                "Failed to push to origin. (Are you offline or lacking permissions?)",
+            );
         }
 
         // 6. Return to original branch
         if !current_branch.is_empty() && current_branch != target_branch {
-            ui.status("INFO", "Git", &format!("Switching back to {}...", current_branch));
+            ui.status(
+                "INFO",
+                "Git",
+                &format!("Switching back to {}...", current_branch),
+            );
             Command::new("git")
                 .current_dir(&backup_repo)
                 .args(["checkout", &current_branch])
@@ -133,8 +150,8 @@ pub fn run(
 mod tests {
     use super::*;
     use crate::AppPaths;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     fn setup_test_env() -> (tempfile::TempDir, AppPaths) {
         let dir = tempdir().unwrap();
@@ -162,10 +179,23 @@ mod tests {
         let (_dir, paths) = setup_test_env();
         let backup_repo = paths.repo.join("data");
         fs::create_dir_all(&backup_repo).unwrap();
-        Command::new("git").current_dir(&backup_repo).arg("init").status().unwrap();
-        
-        let result = run(&paths, Some("nonexistent_file_that_does_not_exist"), None, false, false);
+        Command::new("git")
+            .current_dir(&backup_repo)
+            .arg("init")
+            .status()
+            .unwrap();
+
+        let result = run(
+            &paths,
+            Some("nonexistent_file_that_does_not_exist"),
+            None,
+            false,
+            false,
+        );
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "Failed to execute `git add`");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Failed to execute `git add`"
+        );
     }
 }

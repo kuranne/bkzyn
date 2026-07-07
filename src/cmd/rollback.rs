@@ -14,8 +14,12 @@ pub fn run(
         return Err("Data directory does not exist. Run setup or backup first.".into());
     }
 
-    ui.status("INFO", "Rollback", &format!("Reverting repository state to snapshot {}", commit));
-    
+    ui.status(
+        "INFO",
+        "Rollback",
+        &format!("Reverting repository state to snapshot {}", commit),
+    );
+
     if !dry_run {
         // We use git restore to safely copy the files from the commit into the working directory
         // without altering the commit history or creating a detached HEAD.
@@ -29,7 +33,11 @@ pub fn run(
             .status()?;
 
         if !status.success() {
-            return Err(format!("Failed to rollback to {}. Ensure the snapshot ID is valid.", commit).into());
+            return Err(format!(
+                "Failed to rollback to {}. Ensure the snapshot ID is valid.",
+                commit
+            )
+            .into());
         }
     }
 
