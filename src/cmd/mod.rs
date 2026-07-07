@@ -4,3 +4,7 @@ pub mod pattern;
 pub mod restore;
 pub mod save;
 pub mod setup;
+pub mod sync;
+pub mod status;
+pub mod log;
+pub mod rollback;

@@ -101,18 +101,11 @@ pub fn run(
                 }
             } else {
                 ui.status(
-                    "LINK",
+                    "COPY",
                     &app_name,
                     &format!("{} -> {}", src_path.display(), dest_path.display()),
                 );
-                #[cfg(unix)]
-                {
-                    std::os::unix::fs::symlink(src_path, &dest_path)?;
-                }
-                #[cfg(not(unix))]
-                {
-                    fs::copy(&src_path, &dest_path)?;
-                }
+                fs::copy(&src_path, &dest_path)?;
             }
         } else {
             if is_tmpl {
@@ -123,7 +116,7 @@ pub fn run(
                 );
             } else {
                 ui.status(
-                    "LINK",
+                    "COPY",
                     &app_name,
                     &format!("{} -> {}", src_path.display(), dest_path.display()),
                 );
@@ -183,7 +176,7 @@ mod tests {
         let dest_file = paths.xdg_config.join("myapp").join("file.txt");
         assert!(dest_file.exists());
         #[cfg(unix)]
-        assert!(fs::symlink_metadata(&dest_file).unwrap().is_symlink());
+        assert!(fs::symlink_metadata(&dest_file).unwrap().is_file());
         assert_eq!(fs::read_to_string(dest_file).unwrap(), "hello world");
     }
 
