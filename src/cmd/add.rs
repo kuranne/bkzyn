@@ -79,10 +79,10 @@ pub fn run(
         }
 
         // 3. Update backup.toml
-        let mut backup_toml_path = paths.xdg_config.join("backup").join("backup.toml");
+        let mut backup_toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
         if !backup_toml_path.exists() {
-            // fallback if they haven't put it in ~/.config yet
-            backup_toml_path = paths.config.join("backup").join("backup.toml");
+            // Check repo if not in XDG
+            backup_toml_path = paths.config.join("bkzyn").join("backup.toml");
         }
 
         if backup_toml_path.exists() {
@@ -120,7 +120,7 @@ pub fn run(
                         fs::write(&backup_toml_path, doc.to_string())?;
 
                         // Sync it instantly into the repository so the Git commit grabs it!
-                        let repo_toml_path = paths.config.join("backup").join("backup.toml");
+                        let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
                         if backup_toml_path != repo_toml_path {
                             let _ = fs::copy(&backup_toml_path, &repo_toml_path);
                         }

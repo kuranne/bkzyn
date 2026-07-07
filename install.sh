@@ -36,8 +36,8 @@ mise use -g python@latest 1> /dev/null
 
 # (Oh-my-Zsh installation moved to after bkzyn setup)
 
-# 5. link the current repository to $XDG_DATA_HOME/backup
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/backup"
+# 5. link the current repository to $XDG_DATA_HOME/bkzyn
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bkzyn"
 if [ "$PWD" != "$DATA_DIR" ]; then
     echo "--> Linking current repository to $DATA_DIR..."
     if [ -e "$DATA_DIR" ] && [ ! -L "$DATA_DIR" ]; then

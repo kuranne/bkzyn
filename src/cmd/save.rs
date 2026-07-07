@@ -3,15 +3,14 @@ use std::process::Command;
 /// Saves (commits and optionally pushes) changes to the backup repository
 pub fn run(
     paths: &crate::AppPaths,
-    message: Option<&String>,
+    category: Option<&str>,
+    message: Option<&str>,
     dry_run: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
-    let commit_message = message
-        .map(|s| s.as_str())
-        .unwrap_or("Update configurations");
+    let commit_message = message.unwrap_or("Update configurations");
 
     ui.status(
         "INFO",
@@ -24,9 +23,15 @@ pub fn run(
 
     if !dry_run {
         // 1. Git add
+        let add_path = if let Some(cat) = category {
+            format!("data/{}", cat)
+        } else {
+            ".".to_string()
+        };
+
         let add_status = Command::new("git")
             .current_dir(&paths.repo)
-            .args(["add", "."])
+            .args(["add", &add_path])
             .status()?;
 
         if !add_status.success() {

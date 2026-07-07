@@ -6,10 +6,14 @@ use std::process;
 #[command(name = "bkzyn")]
 #[command(about = "A backup tool for dotfiles and configurations", long_about = None)]
 struct Cli {
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     verbose: bool,
 
-    #[arg(long, help = "Run without making any modifications to the filesystem")]
+    #[arg(
+        long,
+        global = true,
+        help = "Run without making any modifications to the filesystem"
+    )]
     dry_run: bool,
 
     #[command(subcommand)]
@@ -43,8 +47,10 @@ enum Commands {
         /// The pattern to exclude
         pattern: String,
     },
-    /// Save (commit) all modifications to the Git repository
+    /// Save (commit) modifications to the Git repository
     Save {
+        /// Optional specific category to save (e.g. "config")
+        category: Option<String>,
         /// Optional commit message
         #[arg(short, long)]
         message: Option<String>,
@@ -83,7 +89,7 @@ fn main() {
         Commands::Exclude { app, pattern: pat } => {
             pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
         }
-        Commands::Save { message } => save::run(&paths, message.as_ref(), cli.dry_run, cli.verbose),
+        Commands::Save { category, message } => save::run(&paths, category.as_deref(), message.as_deref(), cli.dry_run, cli.verbose),
     } {
         eprintln!("Error: {}", e);
         process::exit(1);
@@ -102,10 +108,18 @@ mod tests {
 
     #[test]
     fn test_backup_command() {
+        // Flags before subcommand
         let args = vec!["bkzyn", "backup"];
         let cli = Cli::parse_from(args);
         assert!(!cli.verbose);
         assert!(!cli.dry_run);
+        assert!(matches!(cli.command, Commands::Backup));
+
+        // Flags after subcommand
+        let args = vec!["bkzyn", "backup", "-v", "--dry-run"];
+        let cli = Cli::parse_from(args);
+        assert!(cli.verbose);
+        assert!(cli.dry_run);
         assert!(matches!(cli.command, Commands::Backup));
     }
 

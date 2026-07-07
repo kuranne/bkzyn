@@ -12,6 +12,6 @@
 **/*.bak
 **/.DS_Store
 **/Cargo.lock
-**/.old/*.tar.zst
+**/.old/**
 **/target/**
 ```
