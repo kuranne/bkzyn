@@ -12,7 +12,7 @@ fn command_exists(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Sets up packages and copies or links configurations.
+/// Sets up packages and copies configurations.
 pub fn run(
     paths: &crate::AppPaths,
     dry_run: bool,
