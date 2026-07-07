@@ -75,7 +75,7 @@ pub fn run(
     }
 
     // 1b. Legacy brew bundle support
-    let brewfile = paths.repo.join("Brewfile");
+    let brewfile = paths.repo.join("data").join("Brewfile");
     if brewfile.exists() {
         ui.status("INFO", "Setup", "Running brew bundle...");
         if !dry_run {
@@ -93,12 +93,12 @@ pub fn run(
     }
 
     // 1c. Nix flake support
-    let flake = paths.repo.join("flake.nix");
+    let flake = paths.repo.join("data").join("flake.nix");
     if flake.exists() {
         ui.status("INFO", "Setup", "Applying Nix flake...");
         if !dry_run {
             let status = Command::new("nix")
-                .current_dir(&paths.repo)
+                .current_dir(paths.repo.join("data"))
                 .arg("profile")
                 .arg("install")
                 .arg(".")

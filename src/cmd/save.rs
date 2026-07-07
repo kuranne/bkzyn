@@ -22,9 +22,11 @@ pub fn run(
     );
 
     if !dry_run {
+        let backup_repo = paths.repo.join("data");
+
         // 1. Determine current branch
         let current_branch_out = Command::new("git")
-            .current_dir(&paths.repo)
+            .current_dir(&backup_repo)
             .args(["branch", "--show-current"])
             .output()?;
         let current_branch = String::from_utf8_lossy(&current_branch_out.stdout).trim().to_string();
@@ -34,27 +36,27 @@ pub fn run(
         // 2. Checkout or create target branch
         ui.status("INFO", "Git", &format!("Switching to {} branch...", target_branch));
         let checkout_status = Command::new("git")
-            .current_dir(&paths.repo)
+            .current_dir(&backup_repo)
             .args(["checkout", target_branch])
             .status()?;
         
         if !checkout_status.success() {
             // Branch doesn't exist locally, create it
             Command::new("git")
-                .current_dir(&paths.repo)
+                .current_dir(&backup_repo)
                 .args(["checkout", "-b", target_branch])
                 .status()?;
         }
 
         // 3. Git add
         let add_path = if let Some(cat) = category {
-            format!("data/{}", cat)
+            cat.to_string()
         } else {
-            "data".to_string() // Instead of ".", only add data/ so we don't accidentally commit src/ changes
+            ".".to_string()
         };
 
         let add_status = Command::new("git")
-            .current_dir(&paths.repo)
+            .current_dir(&backup_repo)
             .args(["add", &add_path])
             .status()?;
 
@@ -64,7 +66,7 @@ pub fn run(
 
         // 4. Git commit
         let commit_status = Command::new("git")
-            .current_dir(&paths.repo)
+            .current_dir(&backup_repo)
             .args(["commit", "-m", commit_message])
             .status()?;
 
@@ -84,7 +86,7 @@ pub fn run(
         // 5. Git push
         ui.status("INFO", "Git", &format!("Pushing {} to origin...", target_branch));
         let push_status = Command::new("git")
-            .current_dir(&paths.repo)
+            .current_dir(&backup_repo)
             .args(["push", "-u", "origin", target_branch])
             .status()?;
         
@@ -96,7 +98,7 @@ pub fn run(
         if !current_branch.is_empty() && current_branch != target_branch {
             ui.status("INFO", "Git", &format!("Switching back to {}...", current_branch));
             Command::new("git")
-                .current_dir(&paths.repo)
+                .current_dir(&backup_repo)
                 .args(["checkout", &current_branch])
                 .status()?;
         }
