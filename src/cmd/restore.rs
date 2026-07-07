@@ -107,7 +107,7 @@ pub fn run(
                 );
                 #[cfg(unix)]
                 {
-                    std::os::unix::fs::symlink(&src_path, &dest_path)?;
+                    std::os::unix::fs::symlink(src_path, &dest_path)?;
                 }
                 #[cfg(not(unix))]
                 {
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_restore_missing_config_dir() {
-        let (dir, paths) = setup_test_env();
+        let (_dir, paths) = setup_test_env();
         fs::remove_dir_all(&paths.config).unwrap(); // remove it
         let result = run(&paths, false, false);
         assert!(result.is_err());
