@@ -6,10 +6,14 @@ use std::process;
 #[command(name = "bkzyn")]
 #[command(about = "A backup tool for dotfiles and configurations", long_about = None)]
 struct Cli {
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     verbose: bool,
 
-    #[arg(long, help = "Run without making any modifications to the filesystem")]
+    #[arg(
+        long,
+        global = true,
+        help = "Run without making any modifications to the filesystem"
+    )]
     dry_run: bool,
 
     #[command(subcommand)]
@@ -102,10 +106,18 @@ mod tests {
 
     #[test]
     fn test_backup_command() {
+        // Flags before subcommand
         let args = vec!["bkzyn", "backup"];
         let cli = Cli::parse_from(args);
         assert!(!cli.verbose);
         assert!(!cli.dry_run);
+        assert!(matches!(cli.command, Commands::Backup));
+
+        // Flags after subcommand
+        let args = vec!["bkzyn", "backup", "-v", "--dry-run"];
+        let cli = Cli::parse_from(args);
+        assert!(cli.verbose);
+        assert!(cli.dry_run);
         assert!(matches!(cli.command, Commands::Backup));
     }
 
