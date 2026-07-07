@@ -15,22 +15,21 @@ A centralized repository and robust CLI tool to manage, restore, and update macO
 
 ## Installation
 
-To completely bootstrap the system on a new machine, clone the repository and run the setup script:
+To completely bootstrap the system on a new machine, you should clone your **personal dotfiles repository** (which contains `setup.sh`) first, and run it:
 
 ```bash
-git clone https://github.com/kuranne/bkzyn.git ~/.local/share/bkzyn
-cd ~/.local/share/bkzyn
+git clone git@github.com:kuranne/backup.git ~/.local/share/bkzyn/data
+cd ~/.local/share/bkzyn/data
 ./setup.sh
 ```
 
-**What the setup script does:**
+**What your dotfiles' `setup.sh` does:**
 
 1. Installs Homebrew (if not present).
 2. Installs `mise` (for managing Rust, Python, etc.).
-3. Compiles and installs the `bkzyn` Rust CLI tool by calling `./install.sh`.
-4. Clones your dotfiles repository into `data/`.
-5. Automatically runs `bkzyn setup` to restore your configurations.
-6. Installs Oh-My-Zsh and sets Zsh as your default shell.
+3. Clones this `bkzyn` CLI repository and installs it by calling its `./install.sh`.
+4. Automatically runs `bkzyn setup` to restore your configurations.
+5. Installs Oh-My-Zsh and sets Zsh as your default shell.
 
 *Note: If you only want to install the `bkzyn` CLI tool without bootstrapping the rest of the system packages, you can just run `./install.sh` directly (requires `cargo`).*
 
