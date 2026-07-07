@@ -149,3 +149,123 @@ pub fn run(
     ui.done("Successful backup");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppPaths;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn setup_test_env() -> (tempfile::TempDir, AppPaths) {
+        let dir = tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        let paths = AppPaths {
+            repo: base.clone(),
+            config: base.join("config"),
+            old: base.join("old"),
+            xdg_config: base.join("xdg_config"),
+        };
+        fs::create_dir_all(&paths.config).unwrap();
+        fs::create_dir_all(&paths.xdg_config).unwrap();
+        (dir, paths)
+    }
+
+    fn write_config(paths: &AppPaths, toml_str: &str) {
+        let backup_dir = paths.xdg_config.join("backup");
+        fs::create_dir_all(&backup_dir).unwrap();
+        fs::write(backup_dir.join("backup.toml"), toml_str).unwrap();
+    }
+
+    #[test]
+    fn test_backup_missing_toml() {
+        let (_dir, paths) = setup_test_env();
+        let result = run(&paths, false, false);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "backup.toml not found in configuration or repository directory"
+        );
+    }
+
+    #[test]
+    fn test_backup_normal_and_exclude() {
+        let (_dir, paths) = setup_test_env();
+
+        // Set up the local xdg config
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(app_dir.join("file.txt"), "hello").unwrap();
+        fs::write(app_dir.join("secret.key"), "do not backup").unwrap();
+
+        // First attempt: no include pattern, so it won't backup anything unless the repo dir exists
+        let toml_str = r#"
+configs = ["myapp"]
+[myapp]
+exclude = ["*.key"]
+"#;
+        write_config(&paths, toml_str);
+
+        // Pre-create the repo dir so it counts as "already exists" for include logic
+        fs::create_dir_all(paths.config.join("myapp")).unwrap();
+
+        // Second attempt: explicit include pattern
+        let toml_str = r#"
+configs = ["myapp"]
+[myapp]
+include = ["*"]
+exclude = ["*.key"]
+"#;
+        write_config(&paths, toml_str);
+
+        run(&paths, false, false).unwrap();
+
+        // Check if file.txt was backed up
+        assert!(paths.config.join("myapp").join("file.txt").exists());
+        // Check if secret.key was skipped
+        assert!(!paths.config.join("myapp").join("secret.key").exists());
+    }
+
+    #[test]
+    fn test_backup_weird_path_traversal() {
+        let (_dir, paths) = setup_test_env();
+
+        let toml_str = r#"
+configs = ["../escaped", "normal"]
+"#;
+        write_config(&paths, toml_str);
+
+        let escaped_dir = paths.xdg_config.join("../escaped");
+        fs::create_dir_all(&escaped_dir).unwrap();
+        fs::write(escaped_dir.join("hack.txt"), "hacked").unwrap();
+
+        let normal_dir = paths.xdg_config.join("normal");
+        fs::create_dir_all(&normal_dir).unwrap();
+
+        // The path traversal should trigger the security warning and skip it, continuing fine.
+        run(&paths, false, false).unwrap();
+
+        // Ensure we didn't back it up into the repo under a literal directory
+        assert!(!paths.config.join("escaped").exists());
+        assert!(!paths.config.join("..").join("escaped_backup").exists());
+    }
+
+    #[test]
+    fn test_backup_archives_old_state() {
+        let (_dir, paths) = setup_test_env();
+        fs::create_dir_all(paths.config.join("oldapp")).unwrap();
+        fs::write(paths.config.join("oldapp").join("old.txt"), "old").unwrap();
+
+        let toml_str = r#"
+configs = []
+"#;
+        write_config(&paths, toml_str);
+
+        run(&paths, false, false).unwrap();
+
+        // Ensure an archive was created in paths.old
+        let mut old_dir = fs::read_dir(&paths.old).unwrap();
+        let archive = old_dir.next().unwrap().unwrap();
+        assert!(archive.file_name().to_string_lossy().ends_with(".tar.zst"));
+    }
+}

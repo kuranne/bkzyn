@@ -14,3 +14,7 @@ ignore = "0.4"
 dirs = "5.0"
 globset = "0.4"
 toml_edit = "0.22"
+minijinja = "2.21.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
