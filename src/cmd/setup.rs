@@ -171,3 +171,52 @@ fi
     ui.done("Successful setup");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppPaths;
+    use tempfile::tempdir;
+
+    fn setup_test_env() -> (tempfile::TempDir, AppPaths) {
+        let dir = tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        let paths = AppPaths {
+            repo: base.clone(),
+            config: base.join("data").join("config"),
+            data: base.join("data").join("share"),
+            old: base.join("old"),
+            xdg_config: base.join("xdg_config"),
+            xdg_data: base.join("xdg_data"),
+        };
+        fs::create_dir_all(&paths.config).unwrap();
+        fs::create_dir_all(&paths.data).unwrap();
+        fs::create_dir_all(&paths.xdg_config).unwrap();
+        fs::create_dir_all(&paths.xdg_data).unwrap();
+        (dir, paths)
+    }
+
+    #[test]
+    fn test_setup_dry_run_ignores_commands() {
+        let (_dir, paths) = setup_test_env();
+
+        // Write a packages.toml
+        let pkg_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&pkg_dir).unwrap();
+        let pkg_toml = r#"
+brew = ["hello"]
+nix = ["world"]
+"#;
+        fs::write(pkg_dir.join("packages.toml"), pkg_toml).unwrap();
+
+        // Create data/Brewfile and data/flake.nix
+        let data_dir = paths.repo.join("data");
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::write(data_dir.join("Brewfile"), "brew 'hello'").unwrap();
+        fs::write(data_dir.join("flake.nix"), "{}").unwrap();
+
+        // Run setup with dry_run = true
+        let result = run(&paths, true, false);
+        assert!(result.is_ok(), "Setup dry_run should succeed without executing system commands");
+    }
+}
