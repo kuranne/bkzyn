@@ -27,7 +27,7 @@ pub fn run(
 
     // Load host variables for templating
     let mut env = Environment::new();
-    let host_toml = paths.xdg_config.join("backup").join("host.toml");
+    let host_toml = paths.xdg_config.join("bkzyn").join("host.toml");
     let host_context: toml::Value = if host_toml.exists() {
         let content = fs::read_to_string(&host_toml)?;
         toml::from_str(&content)?
@@ -198,7 +198,7 @@ mod tests {
         )
         .unwrap();
 
-        let backup_dir = paths.xdg_config.join("backup");
+        let backup_dir = paths.xdg_config.join("bkzyn");
         fs::create_dir_all(&backup_dir).unwrap();
         fs::write(backup_dir.join("host.toml"), "my_val = \"super_secret\"").unwrap();
 

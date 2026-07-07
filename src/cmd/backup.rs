@@ -54,9 +54,9 @@ pub fn run(
     }
 
     // 2. Read config
-    let mut toml_path = paths.xdg_config.join("backup").join("backup.toml");
+    let mut toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
     if !toml_path.exists() {
-        toml_path = paths.config.join("backup").join("backup.toml");
+        toml_path = paths.config.join("bkzyn").join("backup.toml");
     }
     if !toml_path.exists() {
         return Err("backup.toml not found in configuration or repository directory".into());
@@ -181,6 +181,38 @@ pub fn run(
                 }
             }
 
+            // 5. Plural include/exclude blocks
+            use crate::config::RuleMap;
+            if let Some(excludes) = &config.excludes {
+                if let Some(RuleMap::AppList(list)) = excludes.get(&app) {
+                    for ex in list {
+                        exclude_builder.add(globset::Glob::new(ex)?);
+                    }
+                }
+                if let Some(RuleMap::CategoryMap(cmap)) = excludes.get(cat_name) {
+                    if let Some(list) = cmap.get(&app) {
+                        for ex in list {
+                            exclude_builder.add(globset::Glob::new(ex)?);
+                        }
+                    }
+                }
+            }
+
+            if let Some(includes) = &config.includes {
+                if let Some(RuleMap::AppList(list)) = includes.get(&app) {
+                    for inc in list {
+                        include_builder.add(globset::Glob::new(inc)?);
+                    }
+                }
+                if let Some(RuleMap::CategoryMap(cmap)) = includes.get(cat_name) {
+                    if let Some(list) = cmap.get(&app) {
+                        for inc in list {
+                            include_builder.add(globset::Glob::new(inc)?);
+                        }
+                    }
+                }
+            }
+
             let exclude_set = exclude_builder.build()?;
             let include_set = include_builder.build()?;
 
@@ -263,7 +295,7 @@ mod tests {
     }
 
     fn write_config(paths: &AppPaths, toml_str: &str) {
-        let backup_dir = paths.xdg_config.join("backup");
+        let backup_dir = paths.xdg_config.join("bkzyn");
         fs::create_dir_all(&backup_dir).unwrap();
         fs::write(backup_dir.join("backup.toml"), toml_str).unwrap();
     }
@@ -362,5 +394,35 @@ include = []
         let mut config_old_dir = fs::read_dir(paths.old.join("config")).unwrap();
         let archive = config_old_dir.next().unwrap().unwrap();
         assert!(archive.file_name().to_string_lossy().ends_with(".tar.zst"));
+    }
+
+    #[test]
+    fn test_backup_plural_excludes_includes() {
+        let (_dir, paths) = setup_test_env();
+
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(app_dir.join("keep.txt"), "keep").unwrap();
+        fs::write(app_dir.join("drop.txt"), "drop").unwrap();
+
+        let toml_str = r#"
+[config]
+include = ["myapp"]
+
+[includes.config]
+myapp = ["*"]
+
+[excludes.config]
+myapp = ["drop.txt"]
+"#;
+        write_config(&paths, toml_str);
+
+        // Pre-create the repo dir
+        fs::create_dir_all(paths.config.join("myapp")).unwrap();
+
+        run(&paths, false, false).unwrap();
+
+        assert!(paths.config.join("myapp").join("keep.txt").exists());
+        assert!(!paths.config.join("myapp").join("drop.txt").exists());
     }
 }
