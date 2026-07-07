@@ -9,17 +9,24 @@ This plan outlines a highly secure, software-only strategy without requiring a h
 Because all files inside `~/.password-store` are encrypted (`.gpg` files), it is an industry-standard practice to sync this directory using a private Git repository.
 
 1. **Initialize Git inside pass:**
+
    ```bash
    pass git init
    ```
+
 2. **Add a Private Remote:** Create a _private_ repository on GitHub (e.g., `github.com/kuranne/password-store`) and link it:
+
    ```bash
    pass git remote add origin git@github.com:kuranne/password-store.git
    ```
+
 3. **Push to Sync:**
+
    ```bash
+
    pass git push -u --all
    ```
+
    _Note: From now on, whenever you add/edit a password, `pass` automatically creates a git commit. You just need to run `pass git push` to back it up._
 
 ## Phase 2: Backing up the GPG Private Key
@@ -27,10 +34,13 @@ Because all files inside `~/.password-store` are encrypted (`.gpg` files), it is
 The only thing that can decrypt your passwords is your GPG private key. This **MUST NEVER** be pushed to GitHub.
 
 1. **Find your Key ID:**
+
    ```bash
    gpg --list-secret-keys --keyid-format=long
    ```
+
 2. **Export the Private Key securely:**
+
    ```bash
    gpg --export-secret-keys --armor <YOUR_KEY_ID> > my-private-key.asc
    ```
@@ -50,21 +60,32 @@ When you run `install.sh` on a brand-new macOS or Linux machine, here is the man
 
 1. **Import your GPG Key:**
    - **If using Option A:** Install your Password Manager CLI (e.g., `brew install bitwarden-cli`), log in, fetch the note, and pipe it to GPG:
+
      ```bash
      bw get notes "GPG Private Key" | gpg --import
      ```
+
    - **If using Option B:** Plug in your USB drive and run:
+
      ```bash
      gpg --import /Volumes/USB/my-private-key.asc
      ```
+
 2. **Trust the Key:**
+
    ```bash
    gpg --edit-key <YOUR_KEY_ID>
    # Type: trust -> 5 (Ultimate) -> save
    ```
+
 3. **Clone the Password Store:**
+
    ```bash
-   git clone git@github.com:kuranne/password-store.git ~/.password-store
+   if [ -z $XDG_DATA_HOME ]; then
+      git clone git@github.com:kuranne/password-store.git $XDG_DATA_HOME/.password-store
+   else
+      git clone git@github.com:kuranne/password-store.git ~/.password-store
+   fi
    ```
 
 You now have full access to your `pass` passwords on the new machine, completely securely!
