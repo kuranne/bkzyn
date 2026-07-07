@@ -94,6 +94,22 @@ Instead of editing `backup.toml` by hand, use the provided subcommands:
   ```
   Updates `backup.toml` to explicitly ignore the `.git` folder in `nvim` when running `bkzyn backup`.
 
+### Templating
+
+`bkzyn restore` automatically supports dynamic configurations via the `minijinja` templating engine.
+
+1. **Create Host Variables**: Define your variables in `$XDG_CONFIG_HOME/backup/host.toml`:
+   ```toml
+   font_size = 14
+   theme = "dark"
+   ```
+2. **Template files**: In your repository (`config/` folder), rename a file with `.tmpl` (e.g., `alacritty.toml.tmpl`).
+3. **Use variables**: Inside the file, use `minijinja` syntax:
+   ```toml
+   size = {{ host.font_size }}
+   ```
+When `bkzyn restore` runs, it will parse the template, inject the values, and render it to `~/.config/.../alacritty.toml` without `.tmpl` in the filename.
+
 ### Version Control
 
 - **`bkzyn save [-m "message"]`**  
