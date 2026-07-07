@@ -131,3 +131,12 @@ exclude = [".git", "plugged"]
 include = [".z*", "*.zsh"]
 exclude = [".zcompdump*"]
 ```
+
+---
+
+## Future Plans
+
+We are continuously evolving `bkzyn`. Upcoming features include:
+
+- **Secrets Management**: Integration with lightweight encryption tools like `age`, `sops`, or `git-crypt` so sensitive API keys or SSH configurations can be securely committed.
+- **Background Automation**: Adding `--daemon` mode or a systemd/launchd service generator to automatically snapshot your configurations daily.

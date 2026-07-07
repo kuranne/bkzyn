@@ -1,4 +1,4 @@
-use bkzyn::cmd::{add, backup, pattern, restore, save, setup};
+use bkzyn::cmd::{add, backup, log, pattern, restore, rollback, save, setup, status, sync};
 use clap::{Parser, Subcommand};
 use std::process;
 
@@ -59,6 +59,17 @@ enum Commands {
         #[arg(short, long)]
         message: Option<String>,
     },
+    /// Synchronize snapshots with the remote repository (pull and push)
+    Sync,
+    /// View un-saved changes between system configuration and the repository
+    Status,
+    /// View a history of past snapshots
+    Log,
+    /// Revert the repository to a specific past snapshot
+    Rollback {
+        /// The snapshot ID (commit hash) to rollback to
+        commit: String,
+    },
 }
 
 fn main() {
@@ -94,6 +105,10 @@ fn main() {
             pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
         }
         Commands::Save { category, message } => save::run(&paths, category.as_deref(), message.as_deref(), cli.dry_run, cli.verbose),
+        Commands::Sync => sync::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Status => status::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Log => log::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Rollback { commit } => rollback::run(&paths, commit, cli.dry_run, cli.verbose),
     } {
         eprintln!("Error: {}", e);
         process::exit(1);
