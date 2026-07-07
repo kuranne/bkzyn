@@ -187,7 +187,7 @@ mod tests {
         let (_dir, paths) = setup_test_env();
         let outside_path = paths.repo.join("outside.txt");
         fs::write(&outside_path, "test").unwrap();
-        
+
         let result = run(&paths, &outside_path, false, false);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -198,7 +198,7 @@ mod tests {
     fn test_add_nonexistent_path_fails() {
         let (_dir, paths) = setup_test_env();
         let bad_path = paths.xdg_config.join("does_not_exist");
-        
+
         let result = run(&paths, &bad_path, false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));

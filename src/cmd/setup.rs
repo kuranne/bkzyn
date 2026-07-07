@@ -28,7 +28,9 @@ pub fn run(
 
     if toml_path.exists() {
         let content = std::fs::read_to_string(&toml_path)?;
-        if let Ok(packages) = toml::from_str::<std::collections::HashMap<String, Vec<String>>>(&content) {
+        if let Ok(packages) =
+            toml::from_str::<std::collections::HashMap<String, Vec<String>>>(&content)
+        {
             if let Some(nix_pkgs) = packages.get("nix") {
                 if !nix_pkgs.is_empty() && command_exists("nix-env") {
                     ui.status("INFO", "Setup", "Installing nix packages...");
@@ -41,7 +43,10 @@ pub fn run(
                 if !brew_pkgs.is_empty() && command_exists("brew") {
                     ui.status("INFO", "Setup", "Installing brew packages...");
                     if !dry_run {
-                        Command::new("brew").arg("install").args(brew_pkgs).status()?;
+                        Command::new("brew")
+                            .arg("install")
+                            .args(brew_pkgs)
+                            .status()?;
                     }
                 }
             }
@@ -49,7 +54,12 @@ pub fn run(
                 if !apt_pkgs.is_empty() && command_exists("apt-get") {
                     ui.status("INFO", "Setup", "Installing apt packages...");
                     if !dry_run {
-                        Command::new("sudo").arg("apt-get").arg("install").arg("-y").args(apt_pkgs).status()?;
+                        Command::new("sudo")
+                            .arg("apt-get")
+                            .arg("install")
+                            .arg("-y")
+                            .args(apt_pkgs)
+                            .status()?;
                     }
                 }
             }
@@ -57,7 +67,12 @@ pub fn run(
                 if !pacman_pkgs.is_empty() && command_exists("pacman") {
                     ui.status("INFO", "Setup", "Installing pacman packages...");
                     if !dry_run {
-                        Command::new("sudo").arg("pacman").arg("-S").arg("--noconfirm").args(pacman_pkgs).status()?;
+                        Command::new("sudo")
+                            .arg("pacman")
+                            .arg("-S")
+                            .arg("--noconfirm")
+                            .args(pacman_pkgs)
+                            .status()?;
                     }
                 }
             }
@@ -65,7 +80,11 @@ pub fn run(
                 if !yay_pkgs.is_empty() && command_exists("yay") {
                     ui.status("INFO", "Setup", "Installing yay packages...");
                     if !dry_run {
-                        Command::new("yay").arg("-S").arg("--noconfirm").args(yay_pkgs).status()?;
+                        Command::new("yay")
+                            .arg("-S")
+                            .arg("--noconfirm")
+                            .args(yay_pkgs)
+                            .status()?;
                     }
                 }
             }
@@ -217,7 +236,10 @@ nix = ["world"]
 
         // Run setup with dry_run = true
         let result = run(&paths, true, false);
-        assert!(result.is_ok(), "Setup dry_run should succeed without executing system commands");
+        assert!(
+            result.is_ok(),
+            "Setup dry_run should succeed without executing system commands"
+        );
     }
 
     #[test]
@@ -228,6 +250,9 @@ nix = ["world"]
         fs::write(pkg_dir.join("packages.toml"), "invalid [ toml {").unwrap();
 
         let result = run(&paths, true, false);
-        assert!(result.is_ok(), "Setup should warn on bad toml but still succeed");
+        assert!(
+            result.is_ok(),
+            "Setup should warn on bad toml but still succeed"
+        );
     }
 }

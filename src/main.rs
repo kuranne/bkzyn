@@ -94,7 +94,9 @@ fn main() {
     }
 
     if let Err(e) = match &cli.command {
-        Commands::Backup { set_url } => backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose),
+        Commands::Backup { set_url } => {
+            backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose)
+        }
         Commands::Setup => setup::run(&paths, cli.dry_run, cli.verbose),
         Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
         Commands::Add { path } => add::run(&paths, path, cli.dry_run, cli.verbose),
@@ -104,7 +106,13 @@ fn main() {
         Commands::Exclude { app, pattern: pat } => {
             pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
         }
-        Commands::Save { category, message } => save::run(&paths, category.as_deref(), message.as_deref(), cli.dry_run, cli.verbose),
+        Commands::Save { category, message } => save::run(
+            &paths,
+            category.as_deref(),
+            message.as_deref(),
+            cli.dry_run,
+            cli.verbose,
+        ),
         Commands::Sync => sync::run(&paths, cli.dry_run, cli.verbose),
         Commands::Status => status::run(&paths, cli.dry_run, cli.verbose),
         Commands::Log => log::run(&paths, cli.dry_run, cli.verbose),

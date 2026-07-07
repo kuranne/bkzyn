@@ -105,7 +105,7 @@ pub fn run(
                     &app_name,
                     &format!("{} -> {}", src_path.display(), dest_path.display()),
                 );
-                fs::copy(&src_path, &dest_path)?;
+                fs::copy(src_path, &dest_path)?;
             }
         } else {
             if is_tmpl {

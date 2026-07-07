@@ -14,7 +14,7 @@ pub fn run(
     let ui = crate::cli::CliManager::new(verbose);
 
     let data_dir = paths.repo.join("data");
-    
+
     // Set Git URL if provided
     if let Some(url) = set_url {
         if !data_dir.exists() {
@@ -24,12 +24,12 @@ pub fn run(
                 .arg("init")
                 .status()?;
         }
-        
+
         let status = std::process::Command::new("git")
             .current_dir(&data_dir)
             .args(["remote", "add", "origin", url])
             .status()?;
-            
+
         if !status.success() {
             // If origin already exists, try set-url
             let set_status = std::process::Command::new("git")
@@ -40,7 +40,11 @@ pub fn run(
                 ui.warn("Backup", "Failed to set remote URL for data repository");
             }
         }
-        ui.status("INFO", "Backup", &format!("Set data repository URL to {}", url));
+        ui.status(
+            "INFO",
+            "Backup",
+            &format!("Set data repository URL to {}", url),
+        );
     }
 
     if !paths.old.exists() {
@@ -51,14 +55,14 @@ pub fn run(
     let data_dir = paths.repo.join("data");
     if data_dir.exists() {
         let date_str = Local::now().format("%Y-%m-%dT%H%M%S").to_string();
-        
+
         for entry in fs::read_dir(&data_dir)? {
             let entry = entry?;
             if entry.file_type()?.is_dir() {
                 let cat_name = entry.file_name();
                 let cat_name_str = cat_name.to_string_lossy();
                 let cat_old_dir = paths.old.join(&cat_name);
-                
+
                 if !cat_old_dir.exists() {
                     fs::create_dir_all(&cat_old_dir)?;
                 }
@@ -250,53 +254,53 @@ pub fn run(
             let exclude_set = exclude_builder.build()?;
             let include_set = include_builder.build()?;
 
-        let walker = WalkBuilder::new(&src_path).standard_filters(false).build();
+            let walker = WalkBuilder::new(&src_path).standard_filters(false).build();
 
-        for result in walker {
-            let entry = result?;
+            for result in walker {
+                let entry = result?;
 
-            // Skip directories and non-regular files (like sockets, fifos, etc.)
-            let file_type = entry.file_type();
-            if file_type
-                .as_ref()
-                .is_none_or(|ft| ft.is_dir() || (!ft.is_file() && !ft.is_symlink()))
-            {
-                continue;
-            }
-
-            let rel_path = entry.path().strip_prefix(&src_path)?;
-            let dest_file = dest_path.join(rel_path);
-
-            // 1. Is it explicitly excluded?
-            if exclude_set.is_match(rel_path) {
-                continue;
-            }
-
-            // 2. Is it explicitly included OR does it already exist in the repo?
-            let is_included = include_set.is_match(rel_path);
-            let already_exists_in_repo = dest_file.exists();
-
-            if !is_included && !already_exists_in_repo {
-                continue;
-            }
-
-            ui.status("COPY", &app, &format!("{}", rel_path.display()));
-
-            if !dry_run {
-                if let Some(parent) = dest_file.parent() {
-                    fs::create_dir_all(parent)?;
+                // Skip directories and non-regular files (like sockets, fifos, etc.)
+                let file_type = entry.file_type();
+                if file_type
+                    .as_ref()
+                    .is_none_or(|ft| ft.is_dir() || (!ft.is_file() && !ft.is_symlink()))
+                {
+                    continue;
                 }
 
-                // Gracefully catch copy errors so it doesn't crash the whole backup
-                if let Err(e) = fs::copy(entry.path(), &dest_file) {
-                    ui.warn(
-                        "Copy",
-                        &format!("Failed to copy {} ({}) - skipping.", rel_path.display(), e),
-                    );
+                let rel_path = entry.path().strip_prefix(&src_path)?;
+                let dest_file = dest_path.join(rel_path);
+
+                // 1. Is it explicitly excluded?
+                if exclude_set.is_match(rel_path) {
+                    continue;
+                }
+
+                // 2. Is it explicitly included OR does it already exist in the repo?
+                let is_included = include_set.is_match(rel_path);
+                let already_exists_in_repo = dest_file.exists();
+
+                if !is_included && !already_exists_in_repo {
+                    continue;
+                }
+
+                ui.status("COPY", &app, &format!("{}", rel_path.display()));
+
+                if !dry_run {
+                    if let Some(parent) = dest_file.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+
+                    // Gracefully catch copy errors so it doesn't crash the whole backup
+                    if let Err(e) = fs::copy(entry.path(), &dest_file) {
+                        ui.warn(
+                            "Copy",
+                            &format!("Failed to copy {} ({}) - skipping.", rel_path.display(), e),
+                        );
+                    }
                 }
             }
         }
-    }
     }
 
     ui.done("Successful backup");
