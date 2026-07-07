@@ -23,7 +23,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Back up local dotfiles to the repository
-    Backup,
+    Backup {
+        /// Optional: set the github URL for the data repository before backing up
+        #[arg(long)]
+        set_url: Option<String>,
+    },
     /// Install brew packages and set up configuration symlinks
     Setup,
     /// Restore configuration symlinks from repository to local system
@@ -79,7 +83,7 @@ fn main() {
     }
 
     if let Err(e) = match &cli.command {
-        Commands::Backup => backup::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Backup { set_url } => backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose),
         Commands::Setup => setup::run(&paths, cli.dry_run, cli.verbose),
         Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
         Commands::Add { path } => add::run(&paths, path, cli.dry_run, cli.verbose),

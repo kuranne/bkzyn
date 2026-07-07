@@ -23,6 +23,18 @@ pub fn run(
 
     if !dry_run {
         let backup_repo = paths.repo.join("data");
+        
+        // Auto-initialize git if the data folder was wiped
+        if !backup_repo.join(".git").exists() {
+            if !backup_repo.exists() {
+                std::fs::create_dir_all(&backup_repo)?;
+            }
+            Command::new("git")
+                .current_dir(&backup_repo)
+                .arg("init")
+                .status()?;
+            ui.status("INFO", "Git", "Initialized new git repository in data/");
+        }
 
         // 1. Determine current branch
         let current_branch_out = Command::new("git")

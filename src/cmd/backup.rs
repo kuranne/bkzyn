@@ -7,10 +7,41 @@ use tar::Builder;
 /// Backs up local configurations to the repository config directory.
 pub fn run(
     paths: &crate::AppPaths,
+    set_url: Option<&str>,
     dry_run: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
+
+    let data_dir = paths.repo.join("data");
+    
+    // Set Git URL if provided
+    if let Some(url) = set_url {
+        if !data_dir.exists() {
+            fs::create_dir_all(&data_dir)?;
+            std::process::Command::new("git")
+                .current_dir(&data_dir)
+                .arg("init")
+                .status()?;
+        }
+        
+        let status = std::process::Command::new("git")
+            .current_dir(&data_dir)
+            .args(["remote", "add", "origin", url])
+            .status()?;
+            
+        if !status.success() {
+            // If origin already exists, try set-url
+            let set_status = std::process::Command::new("git")
+                .current_dir(&data_dir)
+                .args(["remote", "set-url", "origin", url])
+                .status()?;
+            if !set_status.success() {
+                ui.warn("Backup", "Failed to set remote URL for data repository");
+            }
+        }
+        ui.status("INFO", "Backup", &format!("Set data repository URL to {}", url));
+    }
 
     if !paths.old.exists() {
         fs::create_dir_all(&paths.old)?;
@@ -57,6 +88,9 @@ pub fn run(
     let mut toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
     if !toml_path.exists() {
         toml_path = paths.config.join("bkzyn").join("backup.toml");
+    }
+    if !toml_path.exists() {
+        toml_path = paths.repo.join("backup.toml");
     }
     if !toml_path.exists() {
         return Err("backup.toml not found in configuration or repository directory".into());

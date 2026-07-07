@@ -61,11 +61,29 @@ fi
 cp target/release/bkzyn "$HOME/.local/bin/bkzyn"
 
 # 8. Use the command line to set up
-echo "--> Running bkzyn setup..."
 export PATH="$HOME/.local/bin:$PATH"
 
-bkzyn setup
+DATA_DIR="$HOME/.local/share/bkzyn/data"
+if [ ! -d "$DATA_DIR" ]; then
+    echo "The data/ directory does not exist."
+    echo "Do you want to setup data from a backup repository?"
+    echo "Enter the Git URL, or press Enter/type 'skip' to skip."
+    read -r -p "URL (or 'skip'): " DATA_URL
+    if [ -z "$DATA_URL" ] || [ "$(echo "$DATA_URL" | tr '[:upper:]' '[:lower:]')" = "skip" ]; then
+        mkdir -p "$DATA_DIR"
+        (cd "$DATA_DIR" && git init)
+        echo "Created empty data/ directory."
+        echo "You can set the github link for data/ later using: bkzyn backup --set-url <url>"
+        echo "Exiting installation without running setup."
+        exit 0
+    else
+        echo "--> Cloning $DATA_URL into data/..."
+        git clone "$DATA_URL" "$DATA_DIR"
+    fi
+fi
 
+echo "--> Running bkzyn setup..."
+bkzyn setup
 # 9. install oh-my-zsh (after zsh is guaranteed installed by brew)
 if [ ! -d "$HOME/.oh-my-zsh" ]; then
     echo "--> Installing oh-my-zsh..."

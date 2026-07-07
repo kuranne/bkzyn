@@ -16,6 +16,9 @@ pub fn run(
     if !backup_toml_path.exists() {
         backup_toml_path = paths.config.join("bkzyn").join("backup.toml");
     }
+    if !backup_toml_path.exists() {
+        backup_toml_path = paths.repo.join("backup.toml");
+    }
 
     if !backup_toml_path.exists() {
         return Err(format!(

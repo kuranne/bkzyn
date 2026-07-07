@@ -81,8 +81,12 @@ pub fn run(
         // 3. Update backup.toml
         let mut backup_toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
         if !backup_toml_path.exists() {
-            // Check repo if not in XDG
+            // Check repo config if not in XDG
             backup_toml_path = paths.config.join("bkzyn").join("backup.toml");
+        }
+        if !backup_toml_path.exists() {
+            // Check repo root
+            backup_toml_path = paths.repo.join("backup.toml");
         }
 
         if backup_toml_path.exists() {
