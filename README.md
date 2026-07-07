@@ -66,7 +66,7 @@ The `bkzyn` tool serves as an all-in-one system state manager.
   Reads `backup.toml` and copies modified items from `$XDG_CONFIG_HOME` into the repository. Excludes/includes are heavily respected via glob sets.
 
 - **`bkzyn restore`**  
-  Specifically restores the configuration by applying symlinks from the repository `config/` directory into your `$XDG_CONFIG_HOME`.
+  Specifically restores the configuration by copy files/folders from the repository `config/` directory into your `$XDG_CONFIG_HOME`.
 
 ### Tracking Configurations
 
