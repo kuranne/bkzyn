@@ -10,10 +10,14 @@ pub struct AppPaths {
     pub repo: std::path::PathBuf,
     /// Directory where the configuration files are backed up or stored.
     pub config: std::path::PathBuf,
+    /// Directory where data files (.local/share) are backed up or stored.
+    pub data: std::path::PathBuf,
     /// Directory where older backups are archived.
     pub old: std::path::PathBuf,
     /// The user's local configuration directory on the system.
     pub xdg_config: std::path::PathBuf,
+    /// The user's local data directory on the system.
+    pub xdg_data: std::path::PathBuf,
 }
 
 impl AppPaths {
@@ -26,12 +30,16 @@ impl AppPaths {
         if cfg!(debug_assertions) {
             let repo = std::env::current_dir()?;
             Ok(Self {
-                config: repo.join("config"),
+                config: repo.join("data").join("config"),
+                data: repo.join("data").join("share"),
                 old: repo.join(".old"),
                 repo,
                 xdg_config: std::env::var("XDG_CONFIG_HOME")
                     .map(std::path::PathBuf::from)
                     .unwrap_or_else(|_| home.join(".config")),
+                xdg_data: std::env::var("XDG_DATA_HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| home.join(".local/share")),
             })
         } else {
             let mut repo = std::env::var("XDG_DATA_HOME")
@@ -45,12 +53,16 @@ impl AppPaths {
             }
 
             Ok(Self {
-                config: repo.join("config"),
+                config: repo.join("data").join("config"),
+                data: repo.join("data").join("share"),
                 old: repo.join(".old"),
                 repo,
                 xdg_config: std::env::var("XDG_CONFIG_HOME")
                     .map(std::path::PathBuf::from)
                     .unwrap_or_else(|_| home.join(".config")),
+                xdg_data: std::env::var("XDG_DATA_HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| home.join(".local/share")),
             })
         }
     }

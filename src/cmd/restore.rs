@@ -147,12 +147,15 @@ mod tests {
         let base = dir.path().to_path_buf();
         let paths = AppPaths {
             repo: base.clone(),
-            config: base.join("config"),
+            config: base.join("data").join("config"),
+            data: base.join("data").join("share"),
             old: base.join("old"),
             xdg_config: base.join("xdg_config"),
+            xdg_data: base.join("xdg_data"),
         };
         fs::create_dir_all(&paths.config).unwrap();
         fs::create_dir_all(&paths.xdg_config).unwrap();
+        fs::create_dir_all(&paths.xdg_data).unwrap();
         (dir, paths)
     }
 
