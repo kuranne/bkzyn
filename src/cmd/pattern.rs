@@ -12,9 +12,9 @@ pub fn run(
     let ui = crate::cli::CliManager::new(verbose);
     let action_name = if is_include { "include" } else { "exclude" };
 
-    let mut backup_toml_path = paths.xdg_config.join("backup").join("backup.toml");
+    let mut backup_toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
     if !backup_toml_path.exists() {
-        backup_toml_path = paths.config.join("backup").join("backup.toml");
+        backup_toml_path = paths.config.join("bkzyn").join("backup.toml");
     }
 
     if !backup_toml_path.exists() {
@@ -78,7 +78,7 @@ pub fn run(
             fs::write(&backup_toml_path, doc.to_string())?;
 
             // Sync to repo
-            let repo_toml_path = paths.config.join("backup").join("backup.toml");
+            let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
             if backup_toml_path != repo_toml_path {
                 let _ = fs::copy(&backup_toml_path, &repo_toml_path);
             }
