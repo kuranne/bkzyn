@@ -2,13 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
-    paths-ignore:
-      - 'data/**'
+    branches: ["main"]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
   pull_request:
-    branches: [ "main" ]
-    paths-ignore:
-      - 'data/**'
+    branches: ["main"]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,29 +20,30 @@ jobs:
     name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: clippy, rustfmt
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
-    - name: Check formatting
-      run: cargo fmt -- --check
-      # You can remove this or uncomment if you don't enforce strict formatting yet
-      continue-on-error: true 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
 
-    - name: Lint with Clippy
-      run: cargo clippy -- -D warnings
-      continue-on-error: true
+      - name: Check formatting
+        run: cargo fmt --check
 
-    - name: Build
-      run: cargo build --verbose
+      - name: Lint with Clippy
+        run: cargo clippy -- -D warnings
 
-    - name: Run tests
-      run: cargo test --verbose
+      - name: Build binary
+        run: cargo build --verbose
+
+      - name: Run tests
+        run: cargo test --verbose
