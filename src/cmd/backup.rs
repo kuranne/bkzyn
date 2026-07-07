@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn test_backup_missing_toml() {
         let (_dir, paths) = setup_test_env();
-        let result = run(&paths, false, false);
+        let result = run(&paths, None, false, false);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -377,7 +377,7 @@ exclude = ["*.key"]
 "#;
         write_config(&paths, toml_str);
 
-        run(&paths, false, false).unwrap();
+        run(&paths, None, false, false).unwrap();
 
         // Check if file.txt was backed up
         assert!(paths.config.join("myapp").join("file.txt").exists());
@@ -403,7 +403,7 @@ include = ["../escaped", "normal"]
         fs::create_dir_all(&normal_dir).unwrap();
 
         // The path traversal should trigger the security warning and skip it, continuing fine.
-        run(&paths, false, false).unwrap();
+        run(&paths, None, false, false).unwrap();
 
         // Ensure we didn't back it up into the repo under a literal directory
         assert!(!paths.config.join("escaped").exists());
@@ -422,7 +422,7 @@ include = []
 "#;
         write_config(&paths, toml_str);
 
-        run(&paths, false, false).unwrap();
+        run(&paths, None, false, false).unwrap();
 
         // Ensure an archive was created in paths.old/config
         let mut config_old_dir = fs::read_dir(paths.old.join("config")).unwrap();
@@ -454,7 +454,7 @@ myapp = ["drop.txt"]
         // Pre-create the repo dir
         fs::create_dir_all(paths.config.join("myapp")).unwrap();
 
-        run(&paths, false, false).unwrap();
+        run(&paths, None, false, false).unwrap();
 
         assert!(paths.config.join("myapp").join("keep.txt").exists());
         assert!(!paths.config.join("myapp").join("drop.txt").exists());

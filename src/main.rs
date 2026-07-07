@@ -117,14 +117,14 @@ mod tests {
         let cli = Cli::parse_from(args);
         assert!(!cli.verbose);
         assert!(!cli.dry_run);
-        assert!(matches!(cli.command, Commands::Backup));
+        assert!(matches!(cli.command, Commands::Backup { set_url: _ }));
 
         // Flags after subcommand
         let args = vec!["bkzyn", "backup", "-v", "--dry-run"];
         let cli = Cli::parse_from(args);
-        assert!(cli.verbose);
+        assert!(matches!(cli.command, Commands::Backup { set_url: _ }));
         assert!(cli.dry_run);
-        assert!(matches!(cli.command, Commands::Backup));
+        assert!(cli.verbose);
     }
 
     #[test]
