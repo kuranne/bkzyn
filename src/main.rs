@@ -28,7 +28,7 @@ enum Commands {
         #[arg(long)]
         set_url: Option<String>,
     },
-    /// Install brew packages and set up configuration symlinks
+    /// Install brew packages and set up configuration files
     Setup {
         /// Optional custom ZDOTDIR path. If flag is passed without value, defaults to $XDG_CONFIG_HOME/zsh.
         #[arg(long, num_args = 0..=1, default_missing_value = "DEFAULT_ZDOTDIR")]
@@ -38,7 +38,7 @@ enum Commands {
         #[arg(long)]
         no_check_zsh: bool,
     },
-    /// Restore configuration symlinks from repository to local system
+    /// Restore configuration files from repository to local system
     Restore {
         /// Optional specific paths to restore (e.g. ~/.config/tmux)
         paths: Vec<std::path::PathBuf>,
@@ -48,7 +48,7 @@ enum Commands {
         /// The paths to the files or directories to add
         paths: Vec<std::path::PathBuf>,
         /// Optional glob patterns to ignore when adding a directory
-        #[arg(short = 'i', long = "ignore")]
+        #[arg(short = 'i', long = "ignore", num_args = 1..)]
         ignores: Option<Vec<String>>,
     },
     /// Remove configurations from the backup repository and stop tracking them

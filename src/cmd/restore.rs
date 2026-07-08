@@ -71,7 +71,7 @@ pub fn run(
             if !dry_run {
                 fs::create_dir_all(host_dir)?;
             }
-            restore_directory(repo_dir, host_dir, &env, &ui, dry_run)?;
+            restore_directory(repo_dir, repo_dir, host_dir, &env, &ui, dry_run)?;
         }
     } else {
         ui.status("INFO", "Restore", "Restoring specific target paths...");
@@ -95,7 +95,7 @@ pub fn run(
                     tmpl_target.set_file_name(tmpl_name);
 
                     if repo_target.exists() && repo_target.is_dir() {
-                        restore_directory(&repo_target, &target_abs, &env, &ui, dry_run)?;
+                        restore_directory(repo_dir, &repo_target, &target_abs, &env, &ui, dry_run)?;
                     } else if repo_target.exists() || tmpl_target.exists() {
                         let actual_src = if tmpl_target.exists() {
                             tmpl_target
@@ -137,6 +137,7 @@ pub fn run(
 }
 
 fn restore_directory(
+    base_repo_dir: &Path,
     repo_dir: &Path,
     host_dir: &Path,
     env: &Environment,
@@ -156,13 +157,14 @@ fn restore_directory(
             continue;
         }
 
-        let rel_path = src_path.strip_prefix(repo_dir)?;
-        let app_name = rel_path
+        let rel_to_base = src_path.strip_prefix(base_repo_dir).unwrap_or(src_path);
+        let app_name = rel_to_base
             .components()
             .next()
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .unwrap_or_default();
 
+        let rel_path = src_path.strip_prefix(repo_dir)?;
         let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
         let mut dest_rel_path = rel_path.to_path_buf();
         if is_tmpl {

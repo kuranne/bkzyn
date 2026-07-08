@@ -97,29 +97,28 @@ pub fn run(
             );
 
             if !dry_run {
-                // We use [cat_name.app_name] for specific app configs
-                let table_key = if cat_name == "config" {
-                    app_name.clone() // Legacy fallback: config apps are often at the root level like [vim] instead of [config.vim]
-                } else {
-                    format!("{}.{}", cat_name, app_name)
-                };
+                let has_legacy = doc.contains_table(&app_name);
 
-                // Check if [cat_name.app_name] exists, if not check [app_name]
-                let final_key = if doc.contains_table(&table_key) {
-                    table_key
-                } else if doc.contains_table(&app_name) {
-                    app_name.clone()
-                } else {
-                    table_key
-                };
+                if !doc.contains_table(&cat_name) {
+                    let table = toml_edit::Table::new();
+                    doc.insert(&cat_name, toml_edit::Item::Table(table));
+                }
+                let cat_table = doc[&cat_name].as_table_mut().unwrap();
 
-                if !doc.contains_table(&final_key) {
-                    let mut table = toml_edit::Table::new();
-                    table.set_implicit(true);
-                    doc[&final_key] = toml_edit::Item::Table(table);
+                let mut use_legacy_root = false;
+                if cat_name == "config" && !cat_table.contains_table(&app_name) && has_legacy {
+                    use_legacy_root = true;
                 }
 
-                let app_table = doc[&final_key].as_table_mut().unwrap();
+                let app_table = if use_legacy_root {
+                    doc[&app_name].as_table_mut().unwrap()
+                } else {
+                    if !cat_table.contains_table(&app_name) {
+                        let table = toml_edit::Table::new();
+                        cat_table.insert(&app_name, toml_edit::Item::Table(table));
+                    }
+                    cat_table[&app_name].as_table_mut().unwrap()
+                };
 
                 if !app_table.contains_key("ignores") {
                     app_table["ignores"] =

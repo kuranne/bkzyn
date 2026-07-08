@@ -125,21 +125,33 @@ pub fn run(
                     ui.status("SKIP", &app_name, "File or folder not found in repository.");
                 }
 
-                // Untrack from backup.toml
-                let full_key = format!("{}.{}", cat_name, app_name);
+                let mut parent_is_doc = false;
+                let mut has_app_table = false;
 
-                // Remove from app-specific table [cat_name.app_name] or fallback to [app_name] for config
-                let final_key = if doc.contains_table(&full_key) {
-                    full_key
-                } else if cat_name == "config" && doc.contains_table(&app_name) {
-                    app_name.clone()
-                } else {
-                    full_key
-                };
+                if let Some(cat_table) = doc.get_mut(&cat_name).and_then(|i| i.as_table_mut()) {
+                    if cat_table.contains_table(&app_name) {
+                        has_app_table = true;
+                    }
+                }
 
-                if doc.contains_table(&final_key) {
-                    let app_table = doc[&final_key].as_table_mut().unwrap();
+                if !has_app_table && cat_name == "config" && doc.contains_table(&app_name) {
+                    has_app_table = true;
+                    parent_is_doc = true;
+                }
+
+                if has_app_table {
+                    // Extract a mutable reference just to update the whitelists/ignores arrays
+                    let mut needs_table_removal = false;
+
                     if is_deep_file {
+                        let app_table = if parent_is_doc {
+                            doc[&app_name].as_table_mut().unwrap()
+                        } else {
+                            doc[&cat_name].as_table_mut().unwrap()[&app_name]
+                                .as_table_mut()
+                                .unwrap()
+                        };
+
                         let relative_to_app = relative_path
                             .strip_prefix(&app_name)
                             .unwrap()
@@ -184,7 +196,8 @@ pub fn run(
                         }
                     } else {
                         // Entire app is being removed
-                        // If it's just the root app (not a deep file), we should completely remove it from the whitelists array in [category]
+                        needs_table_removal = true;
+
                         if let Some(cat_table) =
                             doc.get_mut(&cat_name).and_then(|i| i.as_table_mut())
                         {
@@ -207,15 +220,34 @@ pub fn run(
                                 }
                             }
                         }
+                    }
 
-                        // Remove the entire app block [cat_name.app_name]
-                        if doc.remove(&final_key).is_some() {
-                            modified = true;
-                            ui.status(
-                                "INFO",
-                                "Config",
-                                &format!("Removed config block [{}] entirely.", final_key),
-                            );
+                    if needs_table_removal {
+                        if parent_is_doc {
+                            if doc.remove(&app_name).is_some() {
+                                modified = true;
+                                ui.status(
+                                    "INFO",
+                                    "Config",
+                                    &format!("Removed config block [{}] entirely.", app_name),
+                                );
+                            }
+                        } else {
+                            if let Some(cat_table) =
+                                doc.get_mut(&cat_name).and_then(|i| i.as_table_mut())
+                            {
+                                if cat_table.remove(&app_name).is_some() {
+                                    modified = true;
+                                    ui.status(
+                                        "INFO",
+                                        "Config",
+                                        &format!(
+                                            "Removed config block [{}.{}] entirely.",
+                                            cat_name, app_name
+                                        ),
+                                    );
+                                }
+                            }
                         }
                     }
                 } else if !is_deep_file {

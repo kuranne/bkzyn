@@ -166,13 +166,11 @@ pub fn run(
                             .to_string_lossy()
                             .to_string();
 
-                        let app_key = format!("config.{}", top_level_name);
-                        if !doc.contains_table(&app_key) {
-                            let mut table = toml_edit::Table::new();
-                            table.set_implicit(true);
-                            doc[&app_key] = toml_edit::Item::Table(table);
+                        if !config_table.contains_table(&top_level_name) {
+                            let table = toml_edit::Table::new();
+                            config_table.insert(&top_level_name, toml_edit::Item::Table(table));
                         }
-                        let app_table = doc[&app_key].as_table_mut().unwrap();
+                        let app_table = config_table[&top_level_name].as_table_mut().unwrap();
 
                         if !app_table.contains_key("whitelists") {
                             app_table["whitelists"] = toml_edit::Item::Value(
@@ -195,13 +193,11 @@ pub fn run(
 
                     // 3. Inject ignores if provided
                     if let Some(ig) = ignores {
-                        let app_key = format!("config.{}", top_level_name);
-                        if !doc.contains_table(&app_key) {
-                            let mut table = toml_edit::Table::new();
-                            table.set_implicit(true);
-                            doc[&app_key] = toml_edit::Item::Table(table);
+                        if !config_table.contains_table(&top_level_name) {
+                            let table = toml_edit::Table::new();
+                            config_table.insert(&top_level_name, toml_edit::Item::Table(table));
                         }
-                        let app_table = doc[&app_key].as_table_mut().unwrap();
+                        let app_table = config_table[&top_level_name].as_table_mut().unwrap();
 
                         if !app_table.contains_key("ignores") {
                             app_table["ignores"] = toml_edit::Item::Value(toml_edit::Value::Array(
