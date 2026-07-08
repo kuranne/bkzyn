@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::path::{Component, PathBuf};
 
-/// Adds a new configuration to the backup repository and symlinks it.
+/// Adds a new configuration to the backup repository and registers it.
 pub fn run(
     paths: &crate::AppPaths,
     paths_to_add: Vec<PathBuf>,

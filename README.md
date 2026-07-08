@@ -60,13 +60,13 @@ The `bkzyn` tool serves as an all-in-one system state manager.
 ### Core Commands
 
 - **`bkzyn setup`**  
-  Bootstraps the environment by symlinking `config/*` to `$XDG_CONFIG_HOME`, running `brew bundle` with the provided `Brewfile`, and configuring `/etc/zshenv`.
+  Bootstraps the environment by copying `config/*` and rendering `.tmpl` files to `$XDG_CONFIG_HOME`, running `brew bundle` with the provided `Brewfile`, and configuring `/etc/zshenv`.
 
 - **`bkzyn backup`**  
   Reads `backup.toml` and copies modified items from `$XDG_CONFIG_HOME` into the repository. Excludes/includes are heavily respected via glob sets.
 
 - **`bkzyn restore`**  
-  Specifically restores the configuration by applying symlinks from the repository `config/` directory into your `$XDG_CONFIG_HOME`.
+  Specifically restores the configuration by copying files and dynamically rendering `.tmpl` templates from the repository into your `$XDG_CONFIG_HOME`.
 
 ### Tracking Configurations
 
@@ -78,27 +78,34 @@ Instead of editing `backup.toml` by hand, use the provided subcommands:
   bkzyn add ~/.config/nvim
   ```
 
-  Moves the directory into the repository, symlinks it back to `~/.config/nvim`, and registers it in `backup.toml`.
+  Copies the directory into the repository and registers it in `backup.toml` to be tracked.
+
+- **Stop Tracking an application**
+
+  ```bash
+  bkzyn remove nvim
+  ```
+  (Alias: `bkzyn rm`) Reverses `add` by removing the application from `backup.toml` tracking and deleting it from the repository. It does **not** touch your system host files.
 
 - **Add an Include Pattern**
 
   ```bash
-  bkzyn include nvim "*.lua"
+  bkzyn include config nvim "*.lua"
   ```
 
   Updates `backup.toml` to always include `.lua` files for `nvim`.
 
 - **Add an Exclude Pattern**
   ```bash
-  bkzyn exclude nvim ".git"
+  bkzyn ignore config nvim ".git" "*.json"
   ```
-  Updates `backup.toml` to explicitly ignore the `.git` folder in `nvim` when running `bkzyn backup`.
+  Updates `backup.toml` to explicitly ignore multiple patterns like `.git` when running `bkzyn backup`.
 
 ### Templating
 
 `bkzyn restore` automatically supports dynamic configurations via the `minijinja` templating engine.
 
-1. **Create Host Variables**: Define your variables in `$XDG_CONFIG_HOME/backup/host.toml`:
+1. **Create Host Variables**: Define your variables in `$XDG_CONFIG_HOME/bkzyn/host.toml`:
    ```toml
    font_size = 14
    theme = "dark"
@@ -119,17 +126,18 @@ Instead of editing `backup.toml` by hand, use the provided subcommands:
 
 ## Configuration (`backup.toml`)
 
-The configuration lives at `$XDG_CONFIG_HOME/backup/backup.toml` (or at the repository root). Example structure:
+The configuration lives at `$XDG_CONFIG_HOME/bkzyn/backup.toml` (or at the repository root). Example structure:
 
 ```toml
-configs = ["git", "nvim", "zsh", "tmux"]
+[config]
+whitelists = ["git", "nvim", "zsh", "tmux"]
 
-[nvim]
-exclude = [".git", "plugged"]
+[config.nvim]
+ignores = [".git", "plugged"]
 
-[zsh]
-include = [".z*", "*.zsh"]
-exclude = [".zcompdump*"]
+[config.zsh]
+whitelists = [".z*", "*.zsh"]
+ignores = [".zcompdump*"]
 ```
 
 ---
