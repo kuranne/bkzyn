@@ -198,4 +198,95 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("does not exist"));
     }
+
+    #[test]
+    fn test_add_dir_copies_and_updates_toml() {
+        let (_dir, paths) = setup_test_env();
+
+        // Source app directory in xdg_config.
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(app_dir.join("settings.toml"), "value = 1").unwrap();
+
+        // Provide a backup.toml so the update path runs.
+        let bkzyn_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&bkzyn_dir).unwrap();
+        fs::write(
+            bkzyn_dir.join("backup.toml"),
+            "[config]\ninclude = []\n",
+        )
+        .unwrap();
+
+        run(&paths, &app_dir, false, false).unwrap();
+
+        // Dir must be copied into the repo.
+        assert!(paths.config.join("myapp").join("settings.toml").exists());
+
+        // backup.toml must now include "myapp".
+        let toml_content =
+            fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
+        assert!(toml_content.contains("myapp"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_add_already_symlinked_returns_ok() {
+        let (_dir, paths) = setup_test_env();
+
+        // Make xdg_config/myapp a symlink (simulating already added).
+        let app_dir = paths.xdg_config.join("myapp");
+        let real_dir = paths.repo.join("real_myapp");
+        fs::create_dir_all(&real_dir).unwrap();
+        std::os::unix::fs::symlink(&real_dir, &app_dir).unwrap();
+
+        let result = run(&paths, &app_dir, false, false);
+        assert!(result.is_ok());
+        // Repo target must NOT have been created (early return before copy).
+        assert!(!paths.config.join("myapp").exists());
+    }
+
+    #[test]
+    fn test_add_target_exists_in_repo_fails() {
+        let (_dir, paths) = setup_test_env();
+
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+
+        // Pre-create the target in the repo to trigger the conflict error.
+        fs::create_dir_all(paths.config.join("myapp")).unwrap();
+
+        let result = run(&paths, &app_dir, false, false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("already exists in the repository"));
+    }
+
+    #[test]
+    fn test_add_dry_run_no_side_effects() {
+        let (_dir, paths) = setup_test_env();
+
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(app_dir.join("cfg.toml"), "x = 1").unwrap();
+
+        let bkzyn_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&bkzyn_dir).unwrap();
+        fs::write(
+            bkzyn_dir.join("backup.toml"),
+            "[config]\ninclude = []\n",
+        )
+        .unwrap();
+
+        run(&paths, &app_dir, true, false).unwrap();
+
+        // Dry-run must not copy anything to the repo.
+        assert!(!paths.config.join("myapp").exists());
+
+        // backup.toml must be unchanged.
+        let toml_content =
+            fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
+        assert!(!toml_content.contains("myapp"));
+    }
 }

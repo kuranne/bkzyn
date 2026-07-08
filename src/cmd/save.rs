@@ -137,4 +137,36 @@ mod tests {
             "Failed to execute `git add`"
         );
     }
+
+    #[test]
+    fn test_save_successful_commit_with_message() {
+        let (_dir, paths) = setup_test_env();
+        let backup_repo = paths.repo.join("data");
+        fs::create_dir_all(&backup_repo).unwrap();
+
+        // Init repo and configure git identity so commit doesn't fail.
+        for args in [
+            vec!["init"],
+            vec!["config", "user.email", "test@example.com"],
+            vec!["config", "user.name", "Test"],
+        ] {
+            Command::new("git")
+                .current_dir(&backup_repo)
+                .args(&args)
+                .status()
+                .unwrap();
+        }
+
+        // Stage a file so the commit is non-empty.
+        fs::write(backup_repo.join("test.txt"), "hello").unwrap();
+
+        let result = run(
+            &paths,
+            None,
+            Some("my custom message"),
+            false,
+            false,
+        );
+        assert!(result.is_ok());
+    }
 }

@@ -27,3 +27,36 @@ pub fn run(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppPaths;
+    use tempfile::tempdir;
+
+    fn setup_test_env() -> (tempfile::TempDir, AppPaths) {
+        let dir = tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        let paths = AppPaths {
+            repo: base.clone(),
+            config: base.join("data").join("config"),
+            data: base.join("data").join("share"),
+            old: base.join("old"),
+            xdg_config: base.join("xdg_config"),
+            xdg_data: base.join("xdg_data"),
+        };
+        (dir, paths)
+    }
+
+    #[test]
+    fn test_log_missing_data_dir_fails() {
+        let (_dir, paths) = setup_test_env();
+        let result = run(&paths, false, false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Data directory does not exist"));
+    }
+}
+

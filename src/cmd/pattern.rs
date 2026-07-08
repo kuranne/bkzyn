@@ -86,3 +86,96 @@ pub fn run(
     ));
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppPaths;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn setup_test_env() -> (tempfile::TempDir, AppPaths) {
+        let dir = tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        let paths = AppPaths {
+            repo: base.clone(),
+            config: base.join("data").join("config"),
+            data: base.join("data").join("share"),
+            old: base.join("old"),
+            xdg_config: base.join("xdg_config"),
+            xdg_data: base.join("xdg_data"),
+        };
+        fs::create_dir_all(&paths.config).unwrap();
+        fs::create_dir_all(&paths.xdg_config).unwrap();
+        (dir, paths)
+    }
+
+    /// Writes a backup.toml into xdg_config/bkzyn/ and returns its path.
+    fn write_backup_toml(paths: &AppPaths, content: &str) -> std::path::PathBuf {
+        let dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("backup.toml");
+        fs::write(&p, content).unwrap();
+        p
+    }
+
+    #[test]
+    fn test_pattern_missing_toml_fails() {
+        let (_dir, paths) = setup_test_env();
+        let result = run(&paths, "myapp", "*.log", true, false, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("backup.toml"));
+    }
+
+    #[test]
+    fn test_pattern_add_include() {
+        let (_dir, paths) = setup_test_env();
+        let toml_path = write_backup_toml(&paths, "[myapp]\n");
+
+        run(&paths, "myapp", "*.cfg", true, false, false).unwrap();
+
+        let content = fs::read_to_string(&toml_path).unwrap();
+        assert!(content.contains("include"));
+        assert!(content.contains("*.cfg"));
+    }
+
+    #[test]
+    fn test_pattern_add_exclude() {
+        let (_dir, paths) = setup_test_env();
+        let toml_path = write_backup_toml(&paths, "[myapp]\n");
+
+        run(&paths, "myapp", "*.log", false, false, false).unwrap();
+
+        let content = fs::read_to_string(&toml_path).unwrap();
+        assert!(content.contains("exclude"));
+        assert!(content.contains("*.log"));
+    }
+
+    #[test]
+    fn test_pattern_duplicate_not_added_twice() {
+        let (_dir, paths) = setup_test_env();
+        let toml_path =
+            write_backup_toml(&paths, "[myapp]\ninclude = [\"*.cfg\"]\n");
+
+        // Add same pattern twice.
+        run(&paths, "myapp", "*.cfg", true, false, false).unwrap();
+
+        let content = fs::read_to_string(&toml_path).unwrap();
+        // Pattern must appear exactly once.
+        assert_eq!(content.matches("*.cfg").count(), 1);
+    }
+
+    #[test]
+    fn test_pattern_dry_run_no_modification() {
+        let (_dir, paths) = setup_test_env();
+        let original = "[myapp]\n";
+        let toml_path = write_backup_toml(&paths, original);
+
+        run(&paths, "myapp", "*.cfg", true, true, false).unwrap();
+
+        // File must be unchanged after dry-run.
+        let content = fs::read_to_string(&toml_path).unwrap();
+        assert_eq!(content, original);
+    }
+}
+

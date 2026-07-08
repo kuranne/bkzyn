@@ -59,3 +59,107 @@ impl BackupConfig {
         Ok(config)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn write_toml(content: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "{}", content).unwrap();
+        f
+    }
+
+    #[test]
+    fn test_load_valid_config() {
+        let f = write_toml(r#"
+exclude = ['.git']
+
+[config]
+include = ['zsh', 'git']
+"#);
+        let cfg = BackupConfig::load(f.path()).unwrap();
+        assert_eq!(cfg.exclude.unwrap(), vec![".git"]);
+        let includes = cfg.items["config"].include.as_ref().unwrap();
+        assert!(includes.contains(&"zsh".to_string()));
+    }
+
+    #[test]
+    fn test_load_missing_file() {
+        let result = BackupConfig::load("/tmp/bkzyn_does_not_exist_xyz.toml");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_malformed_toml() {
+        let f = write_toml("invalid [ toml {{{");
+        let result = BackupConfig::load(f.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_categories_filters_correctly() {
+        let f = write_toml(r#"
+[config]
+include = []
+
+[dataHome]
+include = []
+
+[myapp]
+include = []
+
+[custom]
+path = "~/custom"
+include = []
+"#);
+        let cfg = BackupConfig::load(f.path()).unwrap();
+        let cats = cfg.categories();
+        assert!(cats.contains_key(&"config".to_string()));
+        assert!(cats.contains_key(&"dataHome".to_string()));
+        assert!(cats.contains_key(&"custom".to_string()));
+        assert!(!cats.contains_key(&"myapp".to_string()));
+    }
+
+    #[test]
+    fn test_global_apps_excludes_categories() {
+        let f = write_toml(r#"
+[config]
+include = []
+
+[dataHome]
+include = []
+
+[myapp]
+include = []
+"#);
+        let cfg = BackupConfig::load(f.path()).unwrap();
+        let apps = cfg.global_apps();
+        assert!(apps.contains_key(&"myapp".to_string()));
+        assert!(!apps.contains_key(&"config".to_string()));
+        assert!(!apps.contains_key(&"dataHome".to_string()));
+    }
+
+    #[test]
+    fn test_rulemap_applist_vs_categorymap() {
+        // AppList: simple array under top-level [includes]
+        let f = write_toml(r#"
+[includes]
+zsh = [".z*", "*.zsh"]
+"#);
+        let cfg = BackupConfig::load(f.path()).unwrap();
+        let includes = cfg.includes.as_ref().unwrap();
+        assert!(matches!(includes["zsh"], RuleMap::AppList(_)));
+
+        // CategoryMap: key → array under [includes.config]
+        let f2 = write_toml(r#"
+[includes.config]
+myapp = ["*.cfg"]
+"#);
+        let cfg2 = BackupConfig::load(f2.path()).unwrap();
+        let includes2 = cfg2.includes.as_ref().unwrap();
+        assert!(matches!(includes2["config"], RuleMap::CategoryMap(_)));
+    }
+}
