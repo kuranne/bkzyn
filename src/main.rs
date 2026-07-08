@@ -52,12 +52,10 @@ enum Commands {
         #[arg(short = 'i', long = "ignore")]
         ignores: Option<Vec<String>>,
     },
-    /// Add an ignore pattern for an app in backup.toml
+    /// Add paths to the ignore list in backup.toml
     Ignore {
-        /// The name of the app
-        app: String,
-        /// The pattern to ignore
-        pattern: String,
+        /// The paths to the files or directories to ignore
+        paths: Vec<std::path::PathBuf>,
     },
     /// Save (commit) modifications to the Git repository
     Save {
@@ -123,9 +121,7 @@ fn main() {
             cli.dry_run,
             cli.verbose,
         ),
-        Commands::Ignore { app, pattern: pat } => {
-            pattern::run(&paths, app, pat, cli.dry_run, cli.verbose)
-        }
+        Commands::Ignore { paths: p } => pattern::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Save { category, message } => save::run(
             &paths,
             category.as_deref(),

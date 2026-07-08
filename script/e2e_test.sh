@@ -49,7 +49,7 @@ if [ ! -f "data/config/myapp/config.toml" ]; then
 fi
 
 echo "--> 3. bkzyn ignore & deep add"
-run_bkzyn ignore myapp ".git"
+run_bkzyn ignore "$XDG_CONFIG_HOME/myapp/.git"
 # Check backup.toml was updated
 grep -q "\".git\"" backup.toml || (echo "Ignore failed" && exit 1)
 

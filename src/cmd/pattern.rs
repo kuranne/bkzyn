@@ -1,88 +1,192 @@
+use crate::config::BackupConfig;
 use std::fs;
+use std::path::{Component, PathBuf};
 
-/// Adds an ignore pattern to an app in backup.toml
+/// Adds ignore paths to an app in backup.toml
 pub fn run(
     paths: &crate::AppPaths,
-    app_name: &str,
-    pattern: &str,
+    paths_to_ignore: Vec<PathBuf>,
     dry_run: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
-    let action_name = "ignores";
 
     let backup_toml_path = paths
         .get_backup_toml_path()
         .ok_or("Could not find backup.toml")?;
 
-    ui.status(
-        "INFO",
-        "Config",
-        &format!(
-            "Adding '{}' to {} for app '{}'...",
-            pattern, action_name, app_name
-        ),
-    );
+    let config = BackupConfig::load(&backup_toml_path)?;
 
-    if !dry_run {
-        let toml_str = fs::read_to_string(&backup_toml_path)?;
-        if let Ok(mut doc) = toml_str.parse::<toml_edit::DocumentMut>() {
-            // Ensure the app table exists: `[app_name]`
-            if !doc.contains_table(app_name) {
-                let table = toml_edit::table();
-                doc[app_name] = toml_edit::Item::Table(table.into_table().unwrap());
-            }
+    // Determine category paths on the host
+    let mut category_dirs = std::collections::HashMap::new();
+    for (cat_name, cat_cfg) in config.categories() {
+        let mut host_dir = match cat_name.as_str() {
+            "config" => paths.xdg_config.clone(),
+            "dataHome" => paths.xdg_data.clone(),
+            _ => std::path::PathBuf::new(),
+        };
 
-            // Get or create the `ignores` array
-            let table = doc[app_name].as_table_mut().unwrap();
-
-            if !table.contains_key(action_name) {
-                let mut arr = toml_edit::Array::new();
-                arr.push(pattern);
-                table[action_name] = toml_edit::Item::Value(toml_edit::Value::Array(arr));
-            } else if let Some(arr) = table[action_name].as_array_mut() {
-                let mut found = false;
-                for item in arr.iter() {
-                    if item.as_str() == Some(pattern) {
-                        found = true;
-                        break;
-                    }
+        if let Some(custom_path) = &cat_cfg.path {
+            if custom_path.starts_with("~/") {
+                if let Some(home) = dirs::home_dir() {
+                    host_dir = home.join(custom_path.strip_prefix("~/").unwrap());
+                } else {
+                    host_dir = std::path::PathBuf::from(custom_path);
                 }
-                if !found {
-                    arr.push(pattern);
-
-                    // Optional: Sort alphabetically
-                    let mut strings: Vec<String> = arr
-                        .iter()
-                        .filter_map(|i| i.as_str().map(|s| s.to_string()))
-                        .collect();
-                    strings.sort();
-
-                    arr.clear();
-                    for s in strings {
-                        arr.push(s);
-                    }
-                }
+            } else {
+                host_dir = std::path::PathBuf::from(custom_path);
             }
-
-            fs::write(&backup_toml_path, doc.to_string())?;
-
-            // Sync to repo
-            let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
-            if backup_toml_path != repo_toml_path {
-                let _ = fs::copy(&backup_toml_path, &repo_toml_path);
-            }
-        } else {
-            return Err("Failed to parse backup.toml".into());
         }
-    } else {
-        ui.status("SKIP", "Config", "Dry run - no modifications made.");
+
+        if !host_dir.as_os_str().is_empty() {
+            category_dirs.insert(cat_name.clone(), host_dir);
+        }
     }
 
-    ui.done(&format!(
-        "Successfully added {} pattern to {} (run `bkzyn save` to commit)",
-        action_name, app_name
-    ));
+    let toml_str = fs::read_to_string(&backup_toml_path)?;
+    let mut doc = toml_str.parse::<toml_edit::DocumentMut>()?;
+    let mut modified = false;
+
+    for target in paths_to_ignore {
+        let absolute_path = if target.is_absolute() {
+            target.clone()
+        } else {
+            std::env::current_dir()?.join(&target)
+        };
+
+        let mut matched_category = None;
+        let mut rel_path = None;
+
+        for (cat_name, host_dir) in &category_dirs {
+            if let Ok(rp) = absolute_path.strip_prefix(host_dir) {
+                matched_category = Some(cat_name.clone());
+                rel_path = Some(rp.to_path_buf());
+                break;
+            }
+        }
+
+        if let (Some(cat_name), Some(relative_path)) = (matched_category, rel_path) {
+            let mut components = relative_path.components();
+            let app_name = match components.next() {
+                Some(Component::Normal(name)) => name.to_string_lossy().into_owned(),
+                _ => {
+                    ui.warn(
+                        "Ignore",
+                        &format!(
+                            "Path {} does not have a valid app directory.",
+                            target.display()
+                        ),
+                    );
+                    continue;
+                }
+            };
+
+            let pattern = components.as_path().to_string_lossy().into_owned();
+            if pattern.is_empty() {
+                ui.warn("Ignore", &format!("Path {} is a top-level app directory. Ignoring the entire app is not supported by this command.", target.display()));
+                continue;
+            }
+
+            ui.status(
+                "INFO",
+                "Config",
+                &format!(
+                    "Adding '{}' to ignores for app '{}' in category '{}'...",
+                    pattern, app_name, cat_name
+                ),
+            );
+
+            if !dry_run {
+                // We use [cat_name.app_name] for specific app configs
+                let table_key = if cat_name == "config" {
+                    app_name.clone() // Legacy fallback: config apps are often at the root level like [vim] instead of [config.vim]
+                } else {
+                    format!("{}.{}", cat_name, app_name)
+                };
+
+                // Check if [cat_name.app_name] exists, if not check [app_name]
+                let final_key = if doc.contains_table(&table_key) {
+                    table_key
+                } else if doc.contains_table(&app_name) {
+                    app_name.clone()
+                } else {
+                    table_key
+                };
+
+                if !doc.contains_table(&final_key) {
+                    let mut table = toml_edit::Table::new();
+                    table.set_implicit(true);
+                    doc[&final_key] = toml_edit::Item::Table(table);
+                }
+
+                let app_table = doc[&final_key].as_table_mut().unwrap();
+
+                if !app_table.contains_key("ignores") {
+                    app_table["ignores"] =
+                        toml_edit::Item::Value(toml_edit::Value::Array(toml_edit::Array::new()));
+                }
+
+                if let Some(arr) = app_table["ignores"].as_array_mut() {
+                    let mut found = false;
+                    for item in arr.iter() {
+                        if item.as_str() == Some(&pattern) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        arr.push(&pattern);
+                        modified = true;
+
+                        // Optional: Sort alphabetically
+                        let mut strings: Vec<String> = arr
+                            .iter()
+                            .filter_map(|i| i.as_str().map(|s| s.to_string()))
+                            .collect();
+                        strings.sort();
+
+                        arr.clear();
+                        for s in strings {
+                            arr.push(s);
+                        }
+                    } else {
+                        ui.status(
+                            "SKIP",
+                            "Config",
+                            &format!(
+                                "Pattern '{}' already exists for app '{}'.",
+                                pattern, app_name
+                            ),
+                        );
+                    }
+                }
+            } else {
+                ui.status("SKIP", "Config", "Dry run - no modifications made.");
+            }
+        } else {
+            ui.warn(
+                "Ignore",
+                &format!(
+                    "Path {} does not match any known backup category host path.",
+                    target.display()
+                ),
+            );
+        }
+    }
+
+    if modified && !dry_run {
+        fs::write(&backup_toml_path, doc.to_string())?;
+
+        // Sync to repo
+        let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
+        if backup_toml_path != repo_toml_path {
+            let _ = fs::copy(&backup_toml_path, &repo_toml_path);
+        }
+        ui.done("Successfully updated ignores in backup.toml (run `bkzyn save` to commit)");
+    } else if !modified && !dry_run {
+        ui.status("INFO", "Config", "No changes made to backup.toml.");
+    }
+
     Ok(())
 }
 
@@ -121,7 +225,8 @@ mod tests {
     #[test]
     fn test_pattern_missing_toml_fails() {
         let (_dir, paths) = setup_test_env();
-        let result = run(&paths, "myapp", "*.log", false, false);
+        let target = paths.xdg_config.join("myapp").join("pattern.log");
+        let result = run(&paths, vec![target], false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("backup.toml"));
     }
@@ -129,35 +234,39 @@ mod tests {
     #[test]
     fn test_pattern_add_ignore() {
         let (_dir, paths) = setup_test_env();
-        let toml_path = write_backup_toml(&paths, "[myapp]\n");
+        let toml_path = write_backup_toml(&paths, "[config]\n[myapp]\n");
+        let target = paths.xdg_config.join("myapp").join("pattern.log");
 
-        run(&paths, "myapp", "*.log", false, false).unwrap();
+        run(&paths, vec![target], false, false).unwrap();
 
         let content = fs::read_to_string(&toml_path).unwrap();
         assert!(content.contains("ignores"));
-        assert!(content.contains("*.log"));
+        assert!(content.contains("pattern.log"));
     }
 
     #[test]
     fn test_pattern_duplicate_not_added_twice() {
         let (_dir, paths) = setup_test_env();
-        let toml_path = write_backup_toml(&paths, "[myapp]\nignores = [\"*.cfg\"]\n");
+        let toml_path =
+            write_backup_toml(&paths, "[config]\n[myapp]\nignores = [\"pattern.log\"]\n");
+        let target = paths.xdg_config.join("myapp").join("pattern.log");
 
         // Add same pattern twice.
-        run(&paths, "myapp", "*.cfg", false, false).unwrap();
+        run(&paths, vec![target], false, false).unwrap();
 
         let content = fs::read_to_string(&toml_path).unwrap();
         // Pattern must appear exactly once.
-        assert_eq!(content.matches("*.cfg").count(), 1);
+        assert_eq!(content.matches("pattern.log").count(), 1);
     }
 
     #[test]
     fn test_pattern_dry_run_no_modification() {
         let (_dir, paths) = setup_test_env();
-        let original = "[myapp]\n";
+        let original = "[config]\n[myapp]\n";
         let toml_path = write_backup_toml(&paths, original);
+        let target = paths.xdg_config.join("myapp").join("pattern.log");
 
-        run(&paths, "myapp", "*.cfg", true, false).unwrap();
+        run(&paths, vec![target], true, false).unwrap();
 
         // File must be unchanged after dry-run.
         let content = fs::read_to_string(&toml_path).unwrap();
