@@ -40,23 +40,20 @@ enum Commands {
     },
     /// Restore configuration symlinks from repository to local system
     Restore,
-    /// Move a configuration into the backup repository and symlink it back
+    /// Move configurations into the backup repository
     Add {
-        /// The path to the file or directory in ~/.config to add
-        path: std::path::PathBuf,
+        /// The paths to the files or directories in ~/.config to add
+        paths: Vec<std::path::PathBuf>,
+
+        /// Optional ignore patterns to skip when adding and to register in backup.toml
+        #[arg(short = 'i', long = "ignore")]
+        ignores: Option<Vec<String>>,
     },
-    /// Add an include pattern for an app in backup.toml
-    Include {
+    /// Add an ignore pattern for an app in backup.toml
+    Ignore {
         /// The name of the app
         app: String,
-        /// The pattern to include
-        pattern: String,
-    },
-    /// Add an exclude pattern for an app in backup.toml
-    Exclude {
-        /// The name of the app
-        app: String,
-        /// The pattern to exclude
+        /// The pattern to ignore
         pattern: String,
     },
     /// Save (commit) modifications to the Git repository
@@ -105,16 +102,26 @@ fn main() {
         Commands::Backup { set_url } => {
             backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose)
         }
-        Commands::Setup { zdotdir, no_check_zsh } => {
-            setup::run(&paths, zdotdir.as_deref(), *no_check_zsh, cli.dry_run, cli.verbose)
-        }
+        Commands::Setup {
+            zdotdir,
+            no_check_zsh,
+        } => setup::run(
+            &paths,
+            zdotdir.as_deref(),
+            *no_check_zsh,
+            cli.dry_run,
+            cli.verbose,
+        ),
         Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
-        Commands::Add { path } => add::run(&paths, path, cli.dry_run, cli.verbose),
-        Commands::Include { app, pattern: pat } => {
-            pattern::run(&paths, app, pat, true, cli.dry_run, cli.verbose)
-        }
-        Commands::Exclude { app, pattern: pat } => {
-            pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
+        Commands::Add { paths: p, ignores } => add::run(
+            &paths,
+            p.clone(),
+            ignores.as_deref(),
+            cli.dry_run,
+            cli.verbose,
+        ),
+        Commands::Ignore { app, pattern: pat } => {
+            pattern::run(&paths, app, pat, cli.dry_run, cli.verbose)
         }
         Commands::Save { category, message } => save::run(
             &paths,

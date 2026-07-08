@@ -185,7 +185,8 @@ pub fn run(
                     &format!("Adding ZDOTDIR to {} (requires sudo)...", zshenv_path),
                 );
 
-                let snippet = format!(r#"
+                let snippet = format!(
+                    r#"
 # --- XDG & ZDOTDIR bootstrap ---
 if [[ -z "$XDG_CONFIG_HOME" ]]; then
     export XDG_CONFIG_HOME="$HOME/.config"
@@ -194,7 +195,8 @@ fi
 if [[ -d "{zdotdir}" ]]; then
     export ZDOTDIR="{zdotdir}"
 fi
-"#);
+"#
+                );
                 if !dry_run {
                     let mut child = Command::new("sudo")
                         .arg("tee")

@@ -48,12 +48,15 @@ if [ ! -f "data/config/myapp/config.toml" ]; then
     exit 1
 fi
 
-echo "--> 3. bkzyn include & exclude"
-run_bkzyn include myapp "*.txt"
-run_bkzyn exclude myapp ".git"
+echo "--> 3. bkzyn ignore & deep add"
+run_bkzyn ignore myapp ".git"
 # Check backup.toml was updated
-grep -q "\"*.txt\"" backup.toml || (echo "Include failed" && exit 1)
-grep -q "\".git\"" backup.toml || (echo "Exclude failed" && exit 1)
+grep -q "\".git\"" backup.toml || (echo "Ignore failed" && exit 1)
+
+mkdir -p "$XDG_CONFIG_HOME/myapp/deep"
+echo "deep" > "$XDG_CONFIG_HOME/myapp/deep/file.txt"
+run_bkzyn add "$XDG_CONFIG_HOME/myapp/deep/file.txt"
+grep -q "\"deep/file.txt\"" backup.toml || (echo "Deep add failed" && exit 1)
 
 echo "--> 4. bkzyn backup"
 # Modify source config (by removing it first so we can simulate real disconnected changes)

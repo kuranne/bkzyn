@@ -1,16 +1,15 @@
 use std::fs;
 
-/// Adds an include or exclude pattern to an app in backup.toml
+/// Adds an ignore pattern to an app in backup.toml
 pub fn run(
     paths: &crate::AppPaths,
     app_name: &str,
     pattern: &str,
-    is_include: bool,
     dry_run: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
-    let action_name = if is_include { "include" } else { "exclude" };
+    let action_name = "ignores";
 
     let backup_toml_path = paths
         .get_backup_toml_path()
@@ -34,7 +33,7 @@ pub fn run(
                 doc[app_name] = toml_edit::Item::Table(table.into_table().unwrap());
             }
 
-            // Get or create the `include` / `exclude` array
+            // Get or create the `ignores` array
             let table = doc[app_name].as_table_mut().unwrap();
 
             if !table.contains_key(action_name) {
@@ -122,42 +121,30 @@ mod tests {
     #[test]
     fn test_pattern_missing_toml_fails() {
         let (_dir, paths) = setup_test_env();
-        let result = run(&paths, "myapp", "*.log", true, false, false);
+        let result = run(&paths, "myapp", "*.log", false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("backup.toml"));
     }
 
     #[test]
-    fn test_pattern_add_include() {
+    fn test_pattern_add_ignore() {
         let (_dir, paths) = setup_test_env();
         let toml_path = write_backup_toml(&paths, "[myapp]\n");
 
-        run(&paths, "myapp", "*.cfg", true, false, false).unwrap();
+        run(&paths, "myapp", "*.log", false, false).unwrap();
 
         let content = fs::read_to_string(&toml_path).unwrap();
-        assert!(content.contains("include"));
-        assert!(content.contains("*.cfg"));
-    }
-
-    #[test]
-    fn test_pattern_add_exclude() {
-        let (_dir, paths) = setup_test_env();
-        let toml_path = write_backup_toml(&paths, "[myapp]\n");
-
-        run(&paths, "myapp", "*.log", false, false, false).unwrap();
-
-        let content = fs::read_to_string(&toml_path).unwrap();
-        assert!(content.contains("exclude"));
+        assert!(content.contains("ignores"));
         assert!(content.contains("*.log"));
     }
 
     #[test]
     fn test_pattern_duplicate_not_added_twice() {
         let (_dir, paths) = setup_test_env();
-        let toml_path = write_backup_toml(&paths, "[myapp]\ninclude = [\"*.cfg\"]\n");
+        let toml_path = write_backup_toml(&paths, "[myapp]\nignores = [\"*.cfg\"]\n");
 
         // Add same pattern twice.
-        run(&paths, "myapp", "*.cfg", true, false, false).unwrap();
+        run(&paths, "myapp", "*.cfg", false, false).unwrap();
 
         let content = fs::read_to_string(&toml_path).unwrap();
         // Pattern must appear exactly once.
@@ -170,7 +157,7 @@ mod tests {
         let original = "[myapp]\n";
         let toml_path = write_backup_toml(&paths, original);
 
-        run(&paths, "myapp", "*.cfg", true, true, false).unwrap();
+        run(&paths, "myapp", "*.cfg", true, false).unwrap();
 
         // File must be unchanged after dry-run.
         let content = fs::read_to_string(&toml_path).unwrap();

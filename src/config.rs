@@ -5,10 +5,10 @@ use std::path::Path;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct BackupConfig {
-    pub include: Option<Vec<String>>,
-    pub exclude: Option<Vec<String>>,
-    pub includes: Option<HashMap<String, RuleMap>>,
-    pub excludes: Option<HashMap<String, RuleMap>>,
+    pub whitelist: Option<Vec<String>>,
+    pub ignores: Option<Vec<String>>,
+    pub whitelists: Option<HashMap<String, RuleMap>>,
+    pub ignores_map: Option<HashMap<String, RuleMap>>,
     #[serde(flatten)]
     pub items: HashMap<String, CategoryOrApp>,
 }
@@ -16,16 +16,16 @@ pub struct BackupConfig {
 #[derive(Debug, Deserialize, Default)]
 pub struct CategoryOrApp {
     pub path: Option<String>,
-    pub include: Option<Vec<String>>,
-    pub exclude: Option<Vec<String>>,
+    pub whitelist: Option<Vec<String>>,
+    pub ignores: Option<Vec<String>>,
     #[serde(flatten)]
     pub apps: HashMap<String, ItemConfig>,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct ItemConfig {
-    pub include: Option<Vec<String>>,
-    pub exclude: Option<Vec<String>>,
+    pub whitelist: Option<Vec<String>>,
+    pub ignores: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -63,85 +63,86 @@ impl BackupConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::io::Write;
-    use tempfile::NamedTempFile;
+    use tempfile::TempDir;
 
-    fn write_toml(content: &str) -> NamedTempFile {
-        let mut f = NamedTempFile::new().unwrap();
+    fn setup_test_env(content: &str) -> (TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let mut f = fs::File::create(&path).unwrap();
         write!(f, "{}", content).unwrap();
-        f
+        (dir, path)
     }
 
     #[test]
     fn test_load_valid_config() {
-        let f = write_toml(
-            r#"
-exclude = ['.git']
+        let toml_str = r#"
+ignores = ['.git']
 
 [config]
-include = ['zsh', 'git']
-"#,
-        );
-        let cfg = BackupConfig::load(f.path()).unwrap();
-        assert_eq!(cfg.exclude.unwrap(), vec![".git"]);
-        let includes = cfg.items["config"].include.as_ref().unwrap();
-        assert!(includes.contains(&"zsh".to_string()));
+whitelist = ['zsh', 'git']
+"#;
+        let (_dir, path) = setup_test_env(toml_str);
+        let cfg = BackupConfig::load(path).unwrap();
+
+        assert_eq!(cfg.ignores.unwrap(), vec![".git"]);
+        let whitelists = cfg.items["config"].whitelist.as_ref().unwrap();
+        assert_eq!(whitelists, &vec!["zsh", "git"]);
     }
 
     #[test]
     fn test_load_missing_file() {
-        let result = BackupConfig::load("/tmp/bkzyn_does_not_exist_xyz.toml");
+        let result = BackupConfig::load("does_not_exist.toml");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_load_malformed_toml() {
-        let f = write_toml("invalid [ toml {{{");
-        let result = BackupConfig::load(f.path());
+        let (_dir, path) = setup_test_env("invalid [ toml {{{");
+        let result = BackupConfig::load(path);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_categories_filters_correctly() {
-        let f = write_toml(
-            r#"
+        let toml_str = r#"
 [config]
-include = []
+whitelist = []
 
 [dataHome]
-include = []
+whitelist = []
 
 [myapp]
-include = []
+whitelist = []
 
 [custom]
 path = "~/custom"
-include = []
-"#,
-        );
-        let cfg = BackupConfig::load(f.path()).unwrap();
+whitelist = []
+"#;
+        let (_dir, path) = setup_test_env(toml_str);
+        let cfg = BackupConfig::load(path).unwrap();
         let cats = cfg.categories();
         assert!(cats.contains_key(&"config".to_string()));
         assert!(cats.contains_key(&"dataHome".to_string()));
-        assert!(cats.contains_key(&"custom".to_string()));
-        assert!(!cats.contains_key(&"myapp".to_string()));
+        assert!(cats.contains_key(&"custom".to_string())); // Because it has a path
+        assert!(!cats.contains_key(&"myapp".to_string())); // No path, ignored as category
     }
 
     #[test]
     fn test_global_apps_excludes_categories() {
-        let f = write_toml(
-            r#"
+        let toml_str = r#"
 [config]
-include = []
+whitelist = []
 
 [dataHome]
-include = []
+whitelist = []
 
 [myapp]
-include = []
-"#,
-        );
-        let cfg = BackupConfig::load(f.path()).unwrap();
+whitelist = []
+"#;
+        let (_dir, path) = setup_test_env(toml_str);
+        let cfg = BackupConfig::load(path).unwrap();
         let apps = cfg.global_apps();
         assert!(apps.contains_key(&"myapp".to_string()));
         assert!(!apps.contains_key(&"config".to_string()));
@@ -150,26 +151,32 @@ include = []
 
     #[test]
     fn test_rulemap_applist_vs_categorymap() {
-        // AppList: simple array under top-level [includes]
-        let f = write_toml(
-            r#"
-[includes]
+        let toml_str = r#"
+[whitelists]
 zsh = [".z*", "*.zsh"]
-"#,
-        );
-        let cfg = BackupConfig::load(f.path()).unwrap();
-        let includes = cfg.includes.as_ref().unwrap();
-        assert!(matches!(includes["zsh"], RuleMap::AppList(_)));
+"#;
+        let (_dir, path) = setup_test_env(toml_str);
+        let cfg = BackupConfig::load(path).unwrap();
+        let whitelists = cfg.whitelists.as_ref().unwrap();
 
-        // CategoryMap: key → array under [includes.config]
-        let f2 = write_toml(
-            r#"
-[includes.config]
-myapp = ["*.cfg"]
-"#,
-        );
-        let cfg2 = BackupConfig::load(f2.path()).unwrap();
-        let includes2 = cfg2.includes.as_ref().unwrap();
-        assert!(matches!(includes2["config"], RuleMap::CategoryMap(_)));
+        if let RuleMap::AppList(list) = &whitelists["zsh"] {
+            assert_eq!(list, &vec![".z*", "*.zsh"]);
+        } else {
+            panic!("Expected AppList");
+        }
+
+        let toml_str2 = r#"
+[whitelists.config]
+zsh = [".z*", "*.zsh"]
+"#;
+        let (_dir2, path2) = setup_test_env(toml_str2);
+        let cfg2 = BackupConfig::load(path2).unwrap();
+        let whitelists2 = cfg2.whitelists.as_ref().unwrap();
+
+        if let RuleMap::CategoryMap(cmap) = &whitelists2["config"] {
+            assert_eq!(cmap["zsh"], vec![".z*", "*.zsh"]);
+        } else {
+            panic!("Expected CategoryMap");
+        }
     }
 }
