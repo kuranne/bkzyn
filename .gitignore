@@ -12,7 +12,7 @@
 **/*.bak
 **/.DS_Store
 **/Cargo.lock
-**/.old/**
-**/target/**
+**/.old/
+**/target/
 **/data/
 **/.agents/

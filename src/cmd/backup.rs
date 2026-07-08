@@ -114,7 +114,6 @@ pub fn run(
 
     // 3. Sync categories
     for (cat_name, cat_cfg) in config.categories() {
-
         let mut src_base = match cat_name.as_str() {
             "config" => paths.xdg_config.clone(),
             "dataHome" => paths.xdg_data.clone(),

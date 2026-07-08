@@ -264,7 +264,7 @@ mod tests {
         fs::create_dir_all(&paths.config).unwrap();
         fs::create_dir_all(&paths.xdg_config).unwrap();
         fs::create_dir_all(&paths.xdg_data).unwrap();
-        
+
         let bkzyn_dir = paths.xdg_config.join("bkzyn");
         fs::create_dir_all(&bkzyn_dir).unwrap();
         fs::write(
@@ -273,8 +273,9 @@ mod tests {
 [config]
 whitelists = ["myapp"]
 "#,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         (dir, paths)
     }
 
