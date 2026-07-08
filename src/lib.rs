@@ -82,13 +82,6 @@ impl AppPaths {
             return Some(path);
         }
 
-        if let Some(home) = dirs::home_dir() {
-            let path = home.join(".config").join("bkzyn").join("backup.toml");
-            if path.exists() {
-                return Some(path);
-            }
-        }
-
         None
     }
 }

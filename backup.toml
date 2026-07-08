@@ -1,12 +1,12 @@
 ignores = ['.git', '.DS_Store']
 
 [config]
-whitelist = ['atuin', 'backup', 'btop', 'git', 'herdr', 'mise', 'starship', 'tmux', 'vim', 'zsh']
+whitelists = ['atuin', 'backup', 'btop', 'git', 'herdr', 'mise', 'starship', 'tmux', 'vim', 'zsh']
 
-[whitelists]
+[whitelist.config]
 atuin = ['config.toml']
 vim = ['plugged', 'autoload']
 zsh = [".z*", "*.zsh"]
 
-[ignores_map]
+[ignore.config]
 zsh = [".zcompdump*"]

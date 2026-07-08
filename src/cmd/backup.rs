@@ -114,7 +114,6 @@ pub fn run(
 
     // 3. Sync categories
     for (cat_name, cat_cfg) in config.categories() {
-        let apps_to_backup = cat_cfg.whitelist.clone().unwrap_or_default();
 
         let mut src_base = match cat_name.as_str() {
             "config" => paths.xdg_config.clone(),
@@ -150,7 +149,40 @@ pub fn run(
             fs::create_dir_all(&dest_base)?;
         }
 
-        for app in apps_to_backup {
+        let mut apps_to_process = std::collections::HashSet::new();
+        if let Some(list) = &cat_cfg.whitelists {
+            for app in list {
+                apps_to_process.insert(app.clone());
+            }
+        }
+        use crate::config::RuleMap;
+        if let Some(wl) = &config.whitelist {
+            for (k, v) in wl {
+                if let RuleMap::CategoryMap(cmap) = v {
+                    if k == cat_name {
+                        apps_to_process.extend(cmap.keys().cloned());
+                    }
+                } else if cat_name == "config" {
+                    apps_to_process.insert(k.clone());
+                }
+            }
+        }
+        if let Some(ig) = &config.ignore {
+            for (k, v) in ig {
+                if let RuleMap::CategoryMap(cmap) = v {
+                    if k == cat_name {
+                        apps_to_process.extend(cmap.keys().cloned());
+                    }
+                } else if cat_name == "config" {
+                    apps_to_process.insert(k.clone());
+                }
+            }
+        }
+
+        let mut sorted_apps: Vec<String> = apps_to_process.into_iter().collect();
+        sorted_apps.sort();
+
+        for app in sorted_apps {
             if app.contains('/') || app.contains('\\') || app == ".." || app == "." {
                 ui.warn(
                     "Security",
@@ -175,102 +207,130 @@ pub fn run(
             let dest_path = dest_base.join(&app);
             ui.status("INFO", "Sync", &format!("Syncing {} to repository...", app));
 
-            let mut ignore_builder = globset::GlobSetBuilder::new();
-            let mut whitelist_builder = globset::GlobSetBuilder::new();
-
-            // 1. Global rules
-            if let Some(ignores) = &config.ignores {
-                for ex in ignores {
-                    ignore_builder.add(globset::Glob::new(ex)?);
+            let mut global_ignores = globset::GlobSetBuilder::new();
+            if let Some(ig) = &config.ignores {
+                for ex in ig {
+                    let _ = global_ignores.add(
+                        globset::Glob::new(ex).unwrap_or_else(|_| globset::Glob::new("*").unwrap()),
+                    );
                 }
             }
-            if let Some(whitelists) = &config.whitelist {
-                for inc in whitelists {
-                    whitelist_builder.add(globset::Glob::new(inc)?);
-                }
-            }
+            let global_ignores = global_ignores.build()?;
 
-            // 2. Global app rules
-            if let Some(app_cfg) = config.global_apps().get(&app) {
-                if let Some(ignores) = &app_cfg.ignores {
-                    for ex in ignores {
-                        ignore_builder.add(globset::Glob::new(ex)?);
+            let mut whitelist_globs = globset::GlobSetBuilder::new();
+            let mut ignore_globs = globset::GlobSetBuilder::new();
+            let mut whitelist_literals = Vec::new();
+            let mut ignore_literals = Vec::new();
+
+            let is_literal = |s: &str| {
+                !s.contains('*') && !s.contains('?') && !s.contains('[') && !s.contains('{')
+            };
+
+            let mut add_rules = |list: &Vec<String>,
+                                 is_whitelist: bool|
+             -> Result<(), Box<dyn std::error::Error>> {
+                for rule in list {
+                    if is_literal(rule) {
+                        if is_whitelist {
+                            whitelist_literals.push(rule.clone());
+                        } else {
+                            ignore_literals.push(rule.clone());
+                        }
+                    } else {
+                        if is_whitelist {
+                            let _ = whitelist_globs.add(
+                                globset::Glob::new(rule)
+                                    .unwrap_or_else(|_| globset::Glob::new("").unwrap()),
+                            );
+                        } else {
+                            let _ = ignore_globs.add(
+                                globset::Glob::new(rule)
+                                    .unwrap_or_else(|_| globset::Glob::new("").unwrap()),
+                            );
+                        }
                     }
                 }
-                if let Some(whitelists) = &app_cfg.whitelist {
-                    for inc in whitelists {
-                        whitelist_builder.add(globset::Glob::new(inc)?);
-                    }
-                }
-            }
+                Ok(())
+            };
 
-            // 3. Section rules
-            if let Some(ignores) = &cat_cfg.ignores {
-                for ex in ignores {
-                    ignore_builder.add(globset::Glob::new(ex)?);
-                }
-            }
-            if let Some(whitelists) = &cat_cfg.whitelist {
-                for inc in whitelists {
-                    whitelist_builder.add(globset::Glob::new(inc)?);
-                }
-            }
-
-            // 4. Section app rules
+            // specific whitelist rules for this app
             if let Some(app_cfg) = cat_cfg.apps.get(&app) {
-                if let Some(ignores) = &app_cfg.ignores {
-                    for ex in ignores {
-                        ignore_builder.add(globset::Glob::new(ex)?);
-                    }
-                }
-                if let Some(whitelists) = &app_cfg.whitelist {
-                    for inc in whitelists {
-                        whitelist_builder.add(globset::Glob::new(inc)?);
-                    }
+                if let Some(list) = &app_cfg.whitelists {
+                    add_rules(list, true)?;
                 }
             }
-
-            // 5. Plural whitelist/ignores blocks
-            use crate::config::RuleMap;
-            if let Some(ignores_map) = &config.ignores_map {
-                if let Some(RuleMap::AppList(list)) = ignores_map.get(&app) {
-                    for ex in list {
-                        ignore_builder.add(globset::Glob::new(ex)?);
-                    }
+            if let Some(wl) = &config.whitelist {
+                if let Some(RuleMap::AppList(list)) = wl.get(&app) {
+                    add_rules(list, true)?;
                 }
-                if let Some(RuleMap::CategoryMap(cmap)) = ignores_map.get(cat_name) {
+                if let Some(RuleMap::CategoryMap(cmap)) = wl.get(cat_name) {
                     if let Some(list) = cmap.get(&app) {
-                        for ex in list {
-                            ignore_builder.add(globset::Glob::new(ex)?);
-                        }
+                        add_rules(list, true)?;
                     }
                 }
             }
-
-            if let Some(whitelists) = &config.whitelists {
-                if let Some(RuleMap::AppList(list)) = whitelists.get(&app) {
-                    for inc in list {
-                        whitelist_builder.add(globset::Glob::new(inc)?);
-                    }
+            // specific ignore rules for this app
+            if let Some(app_cfg) = cat_cfg.apps.get(&app) {
+                if let Some(list) = &app_cfg.ignores {
+                    add_rules(list, false)?;
                 }
-                if let Some(RuleMap::CategoryMap(cmap)) = whitelists.get(cat_name) {
+            }
+            if let Some(ig) = &config.ignore {
+                if let Some(RuleMap::AppList(list)) = ig.get(&app) {
+                    add_rules(list, false)?;
+                }
+                if let Some(RuleMap::CategoryMap(cmap)) = ig.get(cat_name) {
                     if let Some(list) = cmap.get(&app) {
-                        for inc in list {
-                            whitelist_builder.add(globset::Glob::new(inc)?);
-                        }
+                        add_rules(list, false)?;
                     }
                 }
             }
 
-            let ignore_set = ignore_builder.build()?;
-            let whitelist_set = whitelist_builder.build()?;
+            let whitelist_globs = whitelist_globs.build()?;
+            let ignore_globs = ignore_globs.build()?;
+
+            let default_include = cat_cfg
+                .whitelists
+                .as_ref()
+                .is_some_and(|l| l.contains(&app));
+            let global_include = config
+                .whitelists
+                .as_ref()
+                .is_some_and(|l| l.contains(&app) || l.contains(&"*".to_string()));
+            let is_app_whitelisted = default_include || global_include;
+
+            let check_inclusion = |rel_path: &std::path::Path| -> bool {
+                let rel_str = rel_path.to_string_lossy().to_string();
+                let mut is_included = is_app_whitelisted;
+
+                if global_ignores.is_match(rel_path) {
+                    is_included = false;
+                }
+                if whitelist_globs.is_match(rel_path) {
+                    is_included = true;
+                }
+                if ignore_globs.is_match(rel_path) {
+                    is_included = false;
+                }
+                for lit in &whitelist_literals {
+                    if rel_str == *lit || rel_str.starts_with(&format!("{}/", lit)) {
+                        is_included = true;
+                    }
+                }
+                for lit in &ignore_literals {
+                    if rel_str == *lit || rel_str.starts_with(&format!("{}/", lit)) {
+                        is_included = false;
+                    }
+                }
+                is_included
+            };
 
             let walker = WalkBuilder::new(&src_path).standard_filters(false).build();
 
             for result in walker {
                 let entry = result?;
 
-                // Skip directories and non-regular files (like sockets, fifos, etc.)
+                // Skip directories and non-regular files
                 let file_type = entry.file_type();
                 if file_type
                     .as_ref()
@@ -282,20 +342,8 @@ pub fn run(
                 let rel_path = entry.path().strip_prefix(&src_path)?;
                 let dest_file = dest_path.join(rel_path);
 
-                let is_whitelisted = whitelist_set.is_match(rel_path);
-
-                // 1. Is it explicitly ignored?
-                let is_ignored = ignore_set.is_match(rel_path);
-
-                // Ignore it UNLESS it is explicitly whitelisted (whitelist overrides ignore)
-                if is_ignored && !is_whitelisted {
-                    continue;
-                }
-
-                // 2. Is it explicitly whitelisted OR does it already exist in the repo?
-                let already_exists_in_repo = dest_file.exists();
-
-                if !is_whitelisted && !already_exists_in_repo {
+                let is_included = check_inclusion(rel_path);
+                if !is_included {
                     continue;
                 }
 
@@ -306,7 +354,6 @@ pub fn run(
                         fs::create_dir_all(parent)?;
                     }
 
-                    // Gracefully catch copy errors so it doesn't crash the whole backup
                     if let Err(e) = fs::copy(entry.path(), &dest_file) {
                         ui.warn(
                             "Copy",
@@ -316,7 +363,7 @@ pub fn run(
                 }
             }
 
-            // Sweep destination for zombie files (files that exist in backup but were deleted from system)
+            // Sweep destination for zombie files and newly-ignored files
             if dest_path.exists() {
                 let dest_walker = WalkBuilder::new(&dest_path).standard_filters(false).build();
                 let mut to_delete = Vec::new();
@@ -329,8 +376,9 @@ pub fn run(
 
                     if let Ok(rel_path) = entry.path().strip_prefix(&dest_path) {
                         let src_file = src_path.join(rel_path);
+                        let is_included = check_inclusion(rel_path);
 
-                        if !src_file.exists() && !ignore_set.is_match(rel_path) {
+                        if !src_file.exists() || !is_included {
                             to_delete.push((rel_path.to_path_buf(), entry.path().to_path_buf()));
                         }
                     }
@@ -340,7 +388,7 @@ pub fn run(
                     ui.status(
                         "DELETE",
                         &app,
-                        &format!("Zombie file removed: {}", rel.display()),
+                        &format!("Removed from backup: {}", rel.display()),
                     );
                     if !dry_run {
                         let _ = fs::remove_file(&full);
@@ -409,7 +457,7 @@ mod tests {
         // First attempt: no whitelist pattern, so it won't backup anything unless the repo dir exists
         let toml_str = r#"
 [config]
-whitelist = ["myapp"]
+whitelists = ["myapp"]
 [config.myapp]
 ignores = ["*.key"]
 "#;
@@ -421,9 +469,9 @@ ignores = ["*.key"]
         // Second attempt: explicit whitelist pattern
         let toml_str = r#"
 [config]
-whitelist = ["myapp"]
+whitelists = ["myapp"]
 [config.myapp]
-whitelist = ["file.txt"]
+whitelists = ["file.txt"]
 ignores = ["*.key"]
 "#;
         write_config(&paths, toml_str);
@@ -442,7 +490,7 @@ ignores = ["*.key"]
 
         let toml_str = r#"
 [config]
-whitelist = ["../escaped", "normal"]
+whitelists = ["../escaped", "normal"]
 "#;
         write_config(&paths, toml_str);
 
@@ -469,7 +517,7 @@ whitelist = ["../escaped", "normal"]
 
         let toml_str = r#"
 [config]
-whitelist = []
+whitelists = []
 "#;
         write_config(&paths, toml_str);
 
@@ -492,12 +540,12 @@ whitelist = []
 
         let toml_str = r#"
 [config]
-whitelist = ["myapp"]
+whitelists = ["myapp"]
 
-[whitelists.config]
+[whitelist.config]
 myapp = ["keep.txt"]
 
-[ignores_map.config]
+[ignore.config]
 myapp = ["drop.txt"]
 "#;
         write_config(&paths, toml_str);

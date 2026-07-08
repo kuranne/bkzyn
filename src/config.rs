@@ -5,10 +5,10 @@ use std::path::Path;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct BackupConfig {
-    pub whitelist: Option<Vec<String>>,
     pub ignores: Option<Vec<String>>,
-    pub whitelists: Option<HashMap<String, RuleMap>>,
-    pub ignores_map: Option<HashMap<String, RuleMap>>,
+    pub whitelists: Option<Vec<String>>,
+    pub whitelist: Option<HashMap<String, RuleMap>>,
+    pub ignore: Option<HashMap<String, RuleMap>>,
     #[serde(flatten)]
     pub items: HashMap<String, CategoryOrApp>,
 }
@@ -16,7 +16,7 @@ pub struct BackupConfig {
 #[derive(Debug, Deserialize, Default)]
 pub struct CategoryOrApp {
     pub path: Option<String>,
-    pub whitelist: Option<Vec<String>>,
+    pub whitelists: Option<Vec<String>>,
     pub ignores: Option<Vec<String>>,
     #[serde(flatten)]
     pub apps: HashMap<String, ItemConfig>,
@@ -24,7 +24,7 @@ pub struct CategoryOrApp {
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct ItemConfig {
-    pub whitelist: Option<Vec<String>>,
+    pub whitelists: Option<Vec<String>>,
     pub ignores: Option<Vec<String>>,
 }
 
@@ -81,13 +81,13 @@ mod tests {
 ignores = ['.git']
 
 [config]
-whitelist = ['zsh', 'git']
+whitelists = ['zsh', 'git']
 "#;
         let (_dir, path) = setup_test_env(toml_str);
         let cfg = BackupConfig::load(path).unwrap();
 
         assert_eq!(cfg.ignores.unwrap(), vec![".git"]);
-        let whitelists = cfg.items["config"].whitelist.as_ref().unwrap();
+        let whitelists = cfg.items["config"].whitelists.as_ref().unwrap();
         assert_eq!(whitelists, &vec!["zsh", "git"]);
     }
 
@@ -108,17 +108,17 @@ whitelist = ['zsh', 'git']
     fn test_categories_filters_correctly() {
         let toml_str = r#"
 [config]
-whitelist = []
+whitelists = []
 
 [dataHome]
-whitelist = []
+whitelists = []
 
 [myapp]
-whitelist = []
+whitelists = []
 
 [custom]
 path = "~/custom"
-whitelist = []
+whitelists = []
 "#;
         let (_dir, path) = setup_test_env(toml_str);
         let cfg = BackupConfig::load(path).unwrap();
@@ -133,13 +133,13 @@ whitelist = []
     fn test_global_apps_excludes_categories() {
         let toml_str = r#"
 [config]
-whitelist = []
+whitelists = []
 
 [dataHome]
-whitelist = []
+whitelists = []
 
 [myapp]
-whitelist = []
+whitelists = []
 "#;
         let (_dir, path) = setup_test_env(toml_str);
         let cfg = BackupConfig::load(path).unwrap();
@@ -152,12 +152,12 @@ whitelist = []
     #[test]
     fn test_rulemap_applist_vs_categorymap() {
         let toml_str = r#"
-[whitelists]
+[whitelist]
 zsh = [".z*", "*.zsh"]
 "#;
         let (_dir, path) = setup_test_env(toml_str);
         let cfg = BackupConfig::load(path).unwrap();
-        let whitelists = cfg.whitelists.as_ref().unwrap();
+        let whitelists = cfg.whitelist.as_ref().unwrap();
 
         if let RuleMap::AppList(list) = &whitelists["zsh"] {
             assert_eq!(list, &vec![".z*", "*.zsh"]);
@@ -166,12 +166,12 @@ zsh = [".z*", "*.zsh"]
         }
 
         let toml_str2 = r#"
-[whitelists.config]
+[whitelist.config]
 zsh = [".z*", "*.zsh"]
 "#;
         let (_dir2, path2) = setup_test_env(toml_str2);
         let cfg2 = BackupConfig::load(path2).unwrap();
-        let whitelists2 = cfg2.whitelists.as_ref().unwrap();
+        let whitelists2 = cfg2.whitelist.as_ref().unwrap();
 
         if let RuleMap::CategoryMap(cmap) = &whitelists2["config"] {
             assert_eq!(cmap["zsh"], vec![".z*", "*.zsh"]);

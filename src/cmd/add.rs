@@ -138,13 +138,13 @@ pub fn run(
                     }
                     let config_table = doc["config"].as_table_mut().unwrap();
 
-                    if !config_table.contains_key("whitelist") {
-                        config_table["whitelist"] = toml_edit::Item::Value(
+                    if !config_table.contains_key("whitelists") {
+                        config_table["whitelists"] = toml_edit::Item::Value(
                             toml_edit::Value::Array(toml_edit::Array::new()),
                         );
                     }
 
-                    if let Some(whitelist) = config_table["whitelist"].as_array_mut() {
+                    if let Some(whitelist) = config_table["whitelists"].as_array_mut() {
                         let mut found = false;
                         for item in whitelist.iter() {
                             if item.as_str() == Some(&top_level_name) {
@@ -174,12 +174,12 @@ pub fn run(
                         }
                         let app_table = doc[&app_key].as_table_mut().unwrap();
 
-                        if !app_table.contains_key("whitelist") {
-                            app_table["whitelist"] = toml_edit::Item::Value(
+                        if !app_table.contains_key("whitelists") {
+                            app_table["whitelists"] = toml_edit::Item::Value(
                                 toml_edit::Value::Array(toml_edit::Array::new()),
                             );
                         }
-                        if let Some(wl) = app_table["whitelist"].as_array_mut() {
+                        if let Some(wl) = app_table["whitelists"].as_array_mut() {
                             let mut found = false;
                             for item in wl.iter() {
                                 if item.as_str() == Some(&relative_to_app) {
