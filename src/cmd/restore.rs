@@ -1,32 +1,26 @@
+use crate::config::BackupConfig;
 use ignore::WalkBuilder;
 use minijinja::Environment;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// Restores configuration symlinks from repository config directory to the system.
+/// Restores and copies configurations from repository config directory to the system.
 pub fn run(
     paths: &crate::AppPaths,
+    target_paths: Vec<PathBuf>,
     dry_run: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
-    if !paths.config.exists() {
-        return Err("No config directory found in the repository.".into());
-    }
-
-    ui.status(
-        "INFO",
-        "Restore",
-        &format!("Restoring configs to {}", paths.xdg_config.display()),
-    );
-
-    if !dry_run {
-        fs::create_dir_all(&paths.xdg_config)?;
-    }
+    let toml_path = paths
+        .get_backup_toml_path()
+        .ok_or("backup.toml not found in configuration or repository directory")?;
+    let config = BackupConfig::load(toml_path)?;
 
     // Load host variables for templating
     let mut env = Environment::new();
+    env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
     let host_toml = paths.xdg_config.join("bkzyn").join("host.toml");
     let host_context: toml::Value = if host_toml.exists() {
         let content = fs::read_to_string(&host_toml)?;
@@ -35,96 +29,219 @@ pub fn run(
         toml::Value::Table(toml::map::Map::new())
     };
 
-    // Add context to env as global so templates can access it
     env.add_global("host", minijinja::Value::from_serialize(&host_context));
 
-    // Walk repository config directory
-    let walker = WalkBuilder::new(&paths.config)
-        .standard_filters(false)
-        .build();
+    // Determine category paths
+    // Map of cat_name -> (repo_dir, host_dir)
+    let mut category_dirs = std::collections::HashMap::new();
 
-    for result in walker {
-        let entry = result?;
-        let src_path = entry.path();
+    for (cat_name, cat_cfg) in config.categories() {
+        let mut host_dir = match cat_name.as_str() {
+            "config" => paths.xdg_config.clone(),
+            "dataHome" => paths.xdg_data.clone(),
+            _ => std::path::PathBuf::new(),
+        };
 
-        let file_type = entry.file_type();
-        if file_type.as_ref().is_none_or(|ft| ft.is_dir()) {
+        if let Some(custom_path) = &cat_cfg.path {
+            if custom_path.starts_with("~/") {
+                if let Some(home) = dirs::home_dir() {
+                    host_dir = home.join(custom_path.strip_prefix("~/").unwrap());
+                } else {
+                    host_dir = std::path::PathBuf::from(custom_path);
+                }
+            } else {
+                host_dir = std::path::PathBuf::from(custom_path);
+            }
+        }
+
+        if host_dir.as_os_str().is_empty() {
             continue;
         }
 
-        let rel_path = src_path.strip_prefix(&paths.config)?;
-        let app_name = rel_path
-            .components()
-            .next()
-            .map(|c| c.as_os_str().to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let repo_dir = paths.repo.join("data").join(cat_name);
+        category_dirs.insert(cat_name.clone(), (repo_dir, host_dir));
+    }
 
-        let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
-        let mut dest_rel_path = rel_path.to_path_buf();
-        if is_tmpl {
-            dest_rel_path.set_extension(""); // remove .tmpl
+    if target_paths.is_empty() {
+        ui.status("INFO", "Restore", "Restoring all categories from backup...");
+        for (repo_dir, host_dir) in category_dirs.values() {
+            if !repo_dir.exists() {
+                continue;
+            }
+            if !dry_run {
+                fs::create_dir_all(host_dir)?;
+            }
+            restore_directory(repo_dir, repo_dir, host_dir, &env, &ui, dry_run)?;
         }
+    } else {
+        ui.status("INFO", "Restore", "Restoring specific target paths...");
+        for target in target_paths {
+            let target_abs = if target.is_absolute() {
+                target.clone()
+            } else {
+                std::env::current_dir()?.join(&target)
+            };
 
-        let dest_path = paths.xdg_config.join(&dest_rel_path);
+            let mut matched = false;
+            for (repo_dir, host_dir) in category_dirs.values() {
+                if let Ok(rel_path) = target_abs.strip_prefix(host_dir) {
+                    matched = true;
+                    let repo_target = repo_dir.join(rel_path);
 
-        if !dry_run {
-            if let Some(parent) = dest_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            if dest_path.exists() {
-                let meta = fs::symlink_metadata(&dest_path)?;
-                if meta.is_dir() {
-                    let backup_path = PathBuf::from(format!("{}.bak", dest_path.display()));
-                    fs::rename(&dest_path, &backup_path)?;
-                } else {
-                    fs::remove_file(&dest_path)?;
-                }
-            }
+                    let mut tmpl_target = repo_target.clone();
+                    let file_name = tmpl_target.file_name().unwrap_or_default().to_os_string();
+                    let mut tmpl_name = file_name.clone();
+                    tmpl_name.push(".tmpl");
+                    tmpl_target.set_file_name(tmpl_name);
 
-            if is_tmpl {
-                ui.status(
-                    "RENDER",
-                    &app_name,
-                    &format!("{} -> {}", rel_path.display(), dest_rel_path.display()),
-                );
-                let template_content = fs::read_to_string(src_path)?;
-                match env.render_str(&template_content, minijinja::context!()) {
-                    Ok(rendered) => {
-                        fs::write(&dest_path, rendered)?;
-                    }
-                    Err(e) => {
+                    if repo_target.exists() && repo_target.is_dir() {
+                        restore_directory(repo_dir, &repo_target, &target_abs, &env, &ui, dry_run)?;
+                    } else if repo_target.exists() || tmpl_target.exists() {
+                        let actual_src = if tmpl_target.exists() {
+                            tmpl_target
+                        } else {
+                            repo_target
+                        };
+                        let app_name = rel_path
+                            .components()
+                            .next()
+                            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        restore_file(&actual_src, &target_abs, &app_name, &env, &ui, dry_run)?;
+                    } else {
                         ui.warn(
-                            "Render",
-                            &format!("Failed to render template {}: {}", rel_path.display(), e),
+                            "Restore",
+                            &format!(
+                                "Path {} does not exist in backup repository.",
+                                target.display()
+                            ),
                         );
                     }
+                    break;
                 }
-            } else {
-                ui.status(
-                    "COPY",
-                    &app_name,
-                    &format!("{} -> {}", src_path.display(), dest_path.display()),
-                );
-                fs::copy(src_path, &dest_path)?;
             }
-        } else {
-            if is_tmpl {
-                ui.status(
-                    "RENDER",
-                    &app_name,
-                    &format!("{} -> {}", rel_path.display(), dest_rel_path.display()),
-                );
-            } else {
-                ui.status(
-                    "COPY",
-                    &app_name,
-                    &format!("{} -> {}", src_path.display(), dest_path.display()),
+            if !matched {
+                ui.warn(
+                    "Restore",
+                    &format!(
+                        "Path {} does not match any known backup category host path.",
+                        target.display()
+                    ),
                 );
             }
         }
     }
 
     ui.done("Successful restore");
+    Ok(())
+}
+
+fn restore_directory(
+    base_repo_dir: &Path,
+    repo_dir: &Path,
+    host_dir: &Path,
+    env: &Environment,
+    ui: &crate::cli::CliManager,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let walker = WalkBuilder::new(repo_dir).standard_filters(false).build();
+
+    for result in walker {
+        let entry = result?;
+        let src_path = entry.path();
+        let file_type = entry.file_type();
+        if file_type
+            .as_ref()
+            .is_none_or(|ft| ft.is_dir() || (!ft.is_file() && !ft.is_symlink()))
+        {
+            continue;
+        }
+
+        let rel_to_base = src_path.strip_prefix(base_repo_dir).unwrap_or(src_path);
+        let app_name = rel_to_base
+            .components()
+            .next()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        let rel_path = src_path.strip_prefix(repo_dir)?;
+        let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
+        let mut dest_rel_path = rel_path.to_path_buf();
+        if is_tmpl {
+            dest_rel_path.set_extension("");
+        }
+        let dest_path = host_dir.join(&dest_rel_path);
+
+        restore_file(src_path, &dest_path, &app_name, env, ui, dry_run)?;
+    }
+    Ok(())
+}
+
+fn restore_file(
+    src_path: &Path,
+    dest_path: &Path,
+    app_name: &str,
+    env: &Environment,
+    ui: &crate::cli::CliManager,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
+
+    if !dry_run {
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        if dest_path.exists() {
+            let meta = fs::symlink_metadata(dest_path)?;
+            if meta.is_dir() {
+                let backup_path = PathBuf::from(format!("{}.bak", dest_path.display()));
+                fs::rename(dest_path, &backup_path)?;
+            } else {
+                fs::remove_file(dest_path)?;
+            }
+        }
+
+        if is_tmpl {
+            ui.status(
+                "RENDER",
+                app_name,
+                &format!("{} -> {}", src_path.display(), dest_path.display()),
+            );
+            let template_content = fs::read_to_string(src_path)?;
+            match env.render_str(&template_content, minijinja::context!()) {
+                Ok(rendered) => {
+                    fs::write(dest_path, rendered)?;
+                }
+                Err(e) => {
+                    ui.warn(
+                        "Render",
+                        &format!("Failed to render template {}: {}", src_path.display(), e),
+                    );
+                }
+            }
+        } else {
+            ui.status(
+                "COPY",
+                app_name,
+                &format!("{} -> {}", src_path.display(), dest_path.display()),
+            );
+            fs::copy(src_path, dest_path)?;
+        }
+    } else {
+        if is_tmpl {
+            ui.status(
+                "RENDER",
+                app_name,
+                &format!("{} -> {}", src_path.display(), dest_path.display()),
+            );
+        } else {
+            ui.status(
+                "COPY",
+                app_name,
+                &format!("{} -> {}", src_path.display(), dest_path.display()),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -149,6 +266,18 @@ mod tests {
         fs::create_dir_all(&paths.config).unwrap();
         fs::create_dir_all(&paths.xdg_config).unwrap();
         fs::create_dir_all(&paths.xdg_data).unwrap();
+
+        let bkzyn_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&bkzyn_dir).unwrap();
+        fs::write(
+            bkzyn_dir.join("backup.toml"),
+            r#"
+[config]
+whitelists = ["myapp"]
+"#,
+        )
+        .unwrap();
+
         (dir, paths)
     }
 
@@ -156,12 +285,8 @@ mod tests {
     fn test_restore_missing_config_dir() {
         let (_dir, paths) = setup_test_env();
         fs::remove_dir_all(&paths.config).unwrap(); // remove it
-        let result = run(&paths, false, false);
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "No config directory found in the repository."
-        );
+        let result = run(&paths, Vec::new(), false, false);
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -171,7 +296,7 @@ mod tests {
         fs::create_dir_all(&app_dir).unwrap();
         fs::write(app_dir.join("file.txt"), "hello world").unwrap();
 
-        run(&paths, false, false).unwrap();
+        run(&paths, Vec::new(), false, false).unwrap();
 
         let dest_file = paths.xdg_config.join("myapp").join("file.txt");
         assert!(dest_file.exists());
@@ -195,7 +320,7 @@ mod tests {
         fs::create_dir_all(&backup_dir).unwrap();
         fs::write(backup_dir.join("host.toml"), "my_val = \"super_secret\"").unwrap();
 
-        run(&paths, false, false).unwrap();
+        run(&paths, Vec::new(), false, false).unwrap();
 
         let dest_file = paths.xdg_config.join("myapp").join("config.toml");
         assert!(dest_file.exists());
@@ -220,7 +345,7 @@ mod tests {
         .unwrap();
         fs::write(app_dir.join("good.txt"), "fine").unwrap();
 
-        run(&paths, false, false).unwrap();
+        run(&paths, Vec::new(), false, false).unwrap();
 
         let dest_bad = paths.xdg_config.join("myapp").join("bad");
         assert!(!dest_bad.exists()); // failed to render, so not created
@@ -240,7 +365,7 @@ mod tests {
         let dest_dir = paths.xdg_config.join("myapp").join("file.txt");
         fs::create_dir_all(&dest_dir).unwrap();
 
-        run(&paths, false, false).unwrap();
+        run(&paths, Vec::new(), false, false).unwrap();
 
         let dest_file = paths.xdg_config.join("myapp").join("file.txt");
         assert!(dest_file.exists());

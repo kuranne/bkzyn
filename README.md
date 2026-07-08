@@ -15,23 +15,23 @@ A centralized repository and robust CLI tool to manage, restore, and update macO
 
 ## Installation
 
-To bootstrap the system on a new machine, clone the repository and run the installation script:
+To completely bootstrap the system on a new machine, you should clone your **personal dotfiles repository** (which contains `setup.sh`) first, and run it:
 
 ```bash
-git clone https://github.com/kuranne/bkzyn.git ~/.local/share/bkzyn
-cd ~/.local/share/bkzyn
-./install.sh
+git clone git@github.com:kuranne/backup.git ~/.local/share/bkzyn/data
+cd ~/.local/share/bkzyn/data
+./setup.sh
 ```
 
-**What the install script does:**
+**What your dotfiles' `setup.sh` does:**
 
 1. Installs Homebrew (if not present).
 2. Installs `mise` (for managing Rust, Python, etc.).
-3. Compiles the `bkzyn` Rust CLI tool in release mode.
-4. Places the binary in `~/.local/bin/bkzyn`.
-5. Symlinks the repository to your `$XDG_DATA_HOME/backup` if not already present.
-6. Automatically runs `bkzyn setup` to restore your configurations.
-7. Installs Oh-My-Zsh and sets Zsh as your default shell.
+3. Clones this `bkzyn` CLI repository and installs it by calling its `./install.sh`.
+4. Automatically runs `bkzyn setup` to restore your configurations.
+5. Installs Oh-My-Zsh and sets Zsh as your default shell.
+
+*Note: If you only want to install the `bkzyn` CLI tool without bootstrapping the rest of the system packages, you can just run `./install.sh` directly (requires `cargo`).*
 
 ---
 
@@ -60,12 +60,13 @@ The `bkzyn` tool serves as an all-in-one system state manager.
 ### Core Commands
 
 - **`bkzyn setup`**  
-  Bootstraps the environment by symlinking `config/*` to `$XDG_CONFIG_HOME`, running `brew bundle` with the provided `Brewfile`, and configuring `/etc/zshenv`.
+  Bootstraps the environment by copying `config/*` and rendering `.tmpl` files to `$XDG_CONFIG_HOME`, running `brew bundle` with the provided `Brewfile`, and configuring `/etc/zshenv`.
 
 - **`bkzyn backup`**  
   Reads `backup.toml` and copies modified items from `$XDG_CONFIG_HOME` into the repository. Excludes/includes are heavily respected via glob sets.
 
 - **`bkzyn restore`**  
+
   Specifically restores the configuration by copy files/folders from the repository `config/` directory into your `$XDG_CONFIG_HOME`.
 
 ### Tracking Configurations
@@ -78,27 +79,34 @@ Instead of editing `backup.toml` by hand, use the provided subcommands:
   bkzyn add ~/.config/nvim
   ```
 
-  Moves the directory into the repository, symlinks it back to `~/.config/nvim`, and registers it in `backup.toml`.
+  Copies the directory into the repository and registers it in `backup.toml` to be tracked.
+
+- **Stop Tracking an application**
+
+  ```bash
+  bkzyn remove nvim
+  ```
+  (Alias: `bkzyn rm`) Reverses `add` by removing the application from `backup.toml` tracking and deleting it from the repository. It does **not** touch your system host files.
 
 - **Add an Include Pattern**
 
   ```bash
-  bkzyn include nvim "*.lua"
+  bkzyn include config nvim "*.lua"
   ```
 
   Updates `backup.toml` to always include `.lua` files for `nvim`.
 
 - **Add an Exclude Pattern**
   ```bash
-  bkzyn exclude nvim ".git"
+  bkzyn ignore config nvim ".git" "*.json"
   ```
-  Updates `backup.toml` to explicitly ignore the `.git` folder in `nvim` when running `bkzyn backup`.
+  Updates `backup.toml` to explicitly ignore multiple patterns like `.git` when running `bkzyn backup`.
 
 ### Templating
 
 `bkzyn restore` automatically supports dynamic configurations via the `minijinja` templating engine.
 
-1. **Create Host Variables**: Define your variables in `$XDG_CONFIG_HOME/backup/host.toml`:
+1. **Create Host Variables**: Define your variables in `$XDG_CONFIG_HOME/bkzyn/host.toml`:
    ```toml
    font_size = 14
    theme = "dark"
@@ -119,17 +127,18 @@ Instead of editing `backup.toml` by hand, use the provided subcommands:
 
 ## Configuration (`backup.toml`)
 
-The configuration lives at `$XDG_CONFIG_HOME/backup/backup.toml` (or at the repository root). Example structure:
+The configuration lives at `$XDG_CONFIG_HOME/bkzyn/backup.toml` (or at the repository root). Example structure:
 
 ```toml
-configs = ["git", "nvim", "zsh", "tmux"]
+[config]
+whitelists = ["git", "nvim", "zsh", "tmux"]
 
-[nvim]
-exclude = [".git", "plugged"]
+[config.nvim]
+ignores = [".git", "plugged"]
 
-[zsh]
-include = [".z*", "*.zsh"]
-exclude = [".zcompdump*"]
+[config.zsh]
+whitelists = [".z*", "*.zsh"]
+ignores = [".zcompdump*"]
 ```
 
 ---

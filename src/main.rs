@@ -1,4 +1,4 @@
-use bkzyn::cmd::{add, backup, log, pattern, restore, rollback, save, setup, status, sync};
+use bkzyn::cmd::{add, backup, log, pattern, remove, restore, rollback, save, setup, status, sync};
 use clap::{Parser, Subcommand};
 use std::process;
 
@@ -28,28 +28,39 @@ enum Commands {
         #[arg(long)]
         set_url: Option<String>,
     },
-    /// Install brew packages and set up configuration symlinks
-    Setup,
-    /// Restore configuration symlinks from repository to local system
-    Restore,
-    /// Move a configuration into the backup repository and symlink it back
+    /// Install brew packages and set up configuration files
+    Setup {
+        /// Optional custom ZDOTDIR path. If flag is passed without value, defaults to $XDG_CONFIG_HOME/zsh.
+        #[arg(long, num_args = 0..=1, default_missing_value = "DEFAULT_ZDOTDIR")]
+        zdotdir: Option<String>,
+
+        /// Disable ZSH Bootstraps check
+        #[arg(long)]
+        no_check_zsh: bool,
+    },
+    /// Restore configuration files from repository to local system
+    Restore {
+        /// Optional specific paths to restore (e.g. ~/.config/tmux)
+        paths: Vec<std::path::PathBuf>,
+    },
+    /// Add new configurations to the backup repository
     Add {
-        /// The path to the file or directory in ~/.config to add
-        path: std::path::PathBuf,
+        /// The paths to the files or directories to add
+        paths: Vec<std::path::PathBuf>,
+        /// Optional glob patterns to ignore when adding a directory
+        #[arg(short = 'i', long = "ignore", num_args = 1..)]
+        ignores: Option<Vec<String>>,
     },
-    /// Add an include pattern for an app in backup.toml
-    Include {
-        /// The name of the app
-        app: String,
-        /// The pattern to include
-        pattern: String,
+    /// Remove configurations from the backup repository and stop tracking them
+    #[command(visible_aliases = ["rm"])]
+    Remove {
+        /// The paths to the files or directories to remove
+        paths: Vec<std::path::PathBuf>,
     },
-    /// Add an exclude pattern for an app in backup.toml
-    Exclude {
-        /// The name of the app
-        app: String,
-        /// The pattern to exclude
-        pattern: String,
+    /// Add paths to the ignore list in backup.toml
+    Ignore {
+        /// The paths to the files or directories to ignore
+        paths: Vec<std::path::PathBuf>,
     },
     /// Save (commit) modifications to the Git repository
     Save {
@@ -97,15 +108,26 @@ fn main() {
         Commands::Backup { set_url } => {
             backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose)
         }
-        Commands::Setup => setup::run(&paths, cli.dry_run, cli.verbose),
-        Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
-        Commands::Add { path } => add::run(&paths, path, cli.dry_run, cli.verbose),
-        Commands::Include { app, pattern: pat } => {
-            pattern::run(&paths, app, pat, true, cli.dry_run, cli.verbose)
-        }
-        Commands::Exclude { app, pattern: pat } => {
-            pattern::run(&paths, app, pat, false, cli.dry_run, cli.verbose)
-        }
+        Commands::Add { paths: p, ignores } => add::run(
+            &paths,
+            p.clone(),
+            ignores.as_deref(),
+            cli.dry_run,
+            cli.verbose,
+        ),
+        Commands::Remove { paths: p } => remove::run(&paths, p.clone(), cli.dry_run, cli.verbose),
+        Commands::Setup {
+            zdotdir,
+            no_check_zsh,
+        } => setup::run(
+            &paths,
+            zdotdir.as_deref(),
+            *no_check_zsh,
+            cli.dry_run,
+            cli.verbose,
+        ),
+        Commands::Restore { paths: p } => restore::run(&paths, p.clone(), cli.dry_run, cli.verbose),
+        Commands::Ignore { paths: p } => pattern::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Save { category, message } => save::run(
             &paths,
             category.as_deref(),
@@ -156,7 +178,7 @@ mod tests {
         let cli = Cli::parse_from(args);
         assert!(cli.verbose);
         assert!(!cli.dry_run);
-        assert!(matches!(cli.command, Commands::Setup));
+        assert!(matches!(cli.command, Commands::Setup { .. }));
     }
 
     #[test]
@@ -165,6 +187,6 @@ mod tests {
         let cli = Cli::parse_from(args);
         assert!(!cli.verbose);
         assert!(cli.dry_run);
-        assert!(matches!(cli.command, Commands::Restore));
+        assert!(matches!(cli.command, Commands::Restore { .. }));
     }
 }

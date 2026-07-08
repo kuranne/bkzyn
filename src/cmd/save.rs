@@ -36,37 +36,7 @@ pub fn run(
             ui.status("INFO", "Git", "Initialized new git repository in data/");
         }
 
-        // 1. Determine current branch
-        let current_branch_out = Command::new("git")
-            .current_dir(&backup_repo)
-            .args(["branch", "--show-current"])
-            .output()?;
-        let current_branch = String::from_utf8_lossy(&current_branch_out.stdout)
-            .trim()
-            .to_string();
-
-        let target_branch = "backup";
-
-        // 2. Checkout or create target branch
-        ui.status(
-            "INFO",
-            "Git",
-            &format!("Switching to {} branch...", target_branch),
-        );
-        let checkout_status = Command::new("git")
-            .current_dir(&backup_repo)
-            .args(["checkout", target_branch])
-            .status()?;
-
-        if !checkout_status.success() {
-            // Branch doesn't exist locally, create it
-            Command::new("git")
-                .current_dir(&backup_repo)
-                .args(["checkout", "-b", target_branch])
-                .status()?;
-        }
-
-        // 3. Git add
+        // 1. Git add
         let add_path = if let Some(cat) = category {
             cat.to_string()
         } else {
@@ -82,7 +52,7 @@ pub fn run(
             return Err("Failed to execute `git add`".into());
         }
 
-        // 4. Git commit
+        // 2. Git commit
         let commit_status = Command::new("git")
             .current_dir(&backup_repo)
             .args(["commit", "-m", commit_message])
@@ -99,37 +69,6 @@ pub fn run(
                 "Git",
                 &format!("Committed with message: \"{}\"", commit_message),
             );
-        }
-
-        // 5. Git push
-        ui.status(
-            "INFO",
-            "Git",
-            &format!("Pushing {} to origin...", target_branch),
-        );
-        let push_status = Command::new("git")
-            .current_dir(&backup_repo)
-            .args(["push", "-u", "origin", target_branch])
-            .status()?;
-
-        if !push_status.success() {
-            ui.warn(
-                "Git",
-                "Failed to push to origin. (Are you offline or lacking permissions?)",
-            );
-        }
-
-        // 6. Return to original branch
-        if !current_branch.is_empty() && current_branch != target_branch {
-            ui.status(
-                "INFO",
-                "Git",
-                &format!("Switching back to {}...", current_branch),
-            );
-            Command::new("git")
-                .current_dir(&backup_repo)
-                .args(["checkout", &current_branch])
-                .status()?;
         }
     } else {
         ui.status(
@@ -197,5 +136,31 @@ mod tests {
             result.unwrap_err().to_string(),
             "Failed to execute `git add`"
         );
+    }
+
+    #[test]
+    fn test_save_successful_commit_with_message() {
+        let (_dir, paths) = setup_test_env();
+        let backup_repo = paths.repo.join("data");
+        fs::create_dir_all(&backup_repo).unwrap();
+
+        // Init repo and configure git identity so commit doesn't fail.
+        for args in [
+            vec!["init"],
+            vec!["config", "user.email", "test@example.com"],
+            vec!["config", "user.name", "Test"],
+        ] {
+            Command::new("git")
+                .current_dir(&backup_repo)
+                .args(&args)
+                .status()
+                .unwrap();
+        }
+
+        // Stage a file so the commit is non-empty.
+        fs::write(backup_repo.join("test.txt"), "hello").unwrap();
+
+        let result = run(&paths, None, Some("my custom message"), false, false);
+        assert!(result.is_ok());
     }
 }

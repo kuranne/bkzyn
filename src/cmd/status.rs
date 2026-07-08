@@ -42,8 +42,10 @@ pub fn run(
                 continue;
             }
 
-            // Use git diff --no-index for a nice colored output of differences
+            // Use git diff --no-index for a nice colored output of differences.
+            // --no-pager prevents git from opening `less` on TTY environments.
             let status = Command::new("git")
+                .arg("--no-pager")
                 .arg("diff")
                 .arg("--no-index")
                 .arg("--color=always")
@@ -65,4 +67,66 @@ pub fn run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AppPaths;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn setup_test_env() -> (tempfile::TempDir, AppPaths) {
+        let dir = tempdir().unwrap();
+        let base = dir.path().to_path_buf();
+        let paths = AppPaths {
+            repo: base.clone(),
+            config: base.join("data").join("config"),
+            data: base.join("data").join("share"),
+            old: base.join("old"),
+            xdg_config: base.join("xdg_config"),
+            xdg_data: base.join("xdg_data"),
+        };
+        fs::create_dir_all(&paths.xdg_config).unwrap();
+        (dir, paths)
+    }
+
+    #[test]
+    fn test_status_missing_config_dir_fails() {
+        let (_dir, paths) = setup_test_env();
+        // paths.config does not exist.
+        let result = run(&paths, false, false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No tracked configurations found"));
+    }
+
+    #[test]
+    fn test_status_in_sync_succeeds() {
+        let (_dir, paths) = setup_test_env();
+        // Create a repo app dir and a matching system dir with identical content.
+        let repo_app = paths.config.join("myapp");
+        let sys_app = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&repo_app).unwrap();
+        fs::create_dir_all(&sys_app).unwrap();
+        fs::write(repo_app.join("cfg.toml"), "x = 1").unwrap();
+        fs::write(sys_app.join("cfg.toml"), "x = 1").unwrap();
+
+        let result = run(&paths, false, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_status_warns_on_missing_system_app() {
+        let (_dir, paths) = setup_test_env();
+        // Repo has an app dir that does not exist on the system.
+        let repo_app = paths.config.join("missingapp");
+        fs::create_dir_all(&repo_app).unwrap();
+        // xdg_config/missingapp is intentionally absent.
+
+        let result = run(&paths, false, false);
+        assert!(result.is_ok());
+    }
 }

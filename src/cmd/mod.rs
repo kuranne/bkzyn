@@ -2,6 +2,7 @@ pub mod add;
 pub mod backup;
 pub mod log;
 pub mod pattern;
+pub mod remove;
 pub mod restore;
 pub mod rollback;
 pub mod save;

@@ -3,158 +3,272 @@ use std::fs;
 use std::path::Path;
 use std::path::{Component, PathBuf};
 
-/// Adds a new configuration to the backup repository and symlinks it.
+/// Adds a new configuration to the backup repository and registers it.
 pub fn run(
     paths: &crate::AppPaths,
-    path_to_add: &PathBuf,
+    paths_to_add: Vec<PathBuf>,
+    ignores: Option<&[String]>,
     dry_run: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
-    let absolute_path = if path_to_add.is_absolute() {
-        path_to_add.clone()
-    } else {
-        std::env::current_dir()?.join(path_to_add)
-    };
+    let backup_toml_path = paths.get_backup_toml_path();
 
-    if !absolute_path.exists() {
-        return Err(format!("Path does not exist: {}", absolute_path.display()).into());
-    }
+    for path_to_add in paths_to_add {
+        let absolute_path = if path_to_add.is_absolute() {
+            path_to_add.clone()
+        } else {
+            std::env::current_dir()?.join(&path_to_add)
+        };
 
-    // Check if the path is inside xdg_config (~/.config)
-    let relative_path = match absolute_path.strip_prefix(&paths.xdg_config) {
-        Ok(p) => p,
-        Err(_) => return Err(
-            "Only paths inside ~/.config (XDG_CONFIG_HOME) are currently supported by bkzyn add."
-                .into(),
-        ),
-    };
+        if !absolute_path.exists() {
+            ui.warn(
+                "Add",
+                &format!("Path does not exist: {}", absolute_path.display()),
+            );
+            continue;
+        }
 
-    // Prevent adding nested subdirectories directly if the parent isn't tracked yet,
-    // or just grab the top-level directory name inside ~/.config
-    let top_level_name = match relative_path.components().next() {
-        Some(Component::Normal(name)) => name,
-        _ => return Err("Invalid path structure inside ~/.config".into()),
-    };
+        // Check if the path is inside xdg_config (~/.config)
+        let relative_path = match absolute_path.strip_prefix(&paths.xdg_config) {
+            Ok(p) => p,
+            Err(_) => {
+                ui.warn(
+                    "Add",
+                    &format!(
+                        "Path {} is not inside ~/.config (XDG_CONFIG_HOME). Skipping.",
+                        absolute_path.display()
+                    ),
+                );
+                continue;
+            }
+        };
 
-    let source_path = paths.xdg_config.join(top_level_name);
-    let target_path = paths.config.join(top_level_name);
-    let app_name = top_level_name.to_string_lossy().into_owned();
+        let mut components = relative_path.components();
+        let top_level_name = match components.next() {
+            Some(Component::Normal(name)) => name.to_string_lossy().into_owned(),
+            _ => {
+                ui.warn("Add", "Invalid path structure inside ~/.config. Skipping.");
+                continue;
+            }
+        };
 
-    ui.status(
-        "INFO",
-        &app_name,
-        &format!("Adding {} to backup repository...", source_path.display()),
-    );
+        // Determine if we are adding the entire app folder or a specific deep file
+        let is_deep_file = relative_path.components().count() > 1;
 
-    if fs::symlink_metadata(&source_path)?.is_symlink() {
-        ui.done(&format!(
-            "{} is already a symlink (likely already backed up).",
-            app_name
-        ));
-        return Ok(());
-    }
-
-    if target_path.exists() {
-        return Err(format!(
-            "Target {} already exists in the repository! Cannot overwrite.",
-            target_path.display()
-        )
-        .into());
-    }
-
-    if !dry_run {
-        // 1. Copy to the repository
-        ui.status(
-            "COPY",
-            &app_name,
-            &format!("{} -> {}", source_path.display(), target_path.display()),
+        let source_path = &absolute_path;
+        let target_path = paths.config.join(&top_level_name).join(
+            relative_path
+                .strip_prefix(&top_level_name)
+                .unwrap_or(std::path::Path::new("")),
         );
 
-        if source_path.is_dir() {
-            copy_dir_all(&source_path, &target_path)?;
-        } else {
-            fs::copy(&source_path, &target_path)?;
+        ui.status(
+            "INFO",
+            &top_level_name,
+            &format!("Adding {} to backup repository...", source_path.display()),
+        );
+
+        if fs::symlink_metadata(source_path)?.is_symlink() {
+            ui.status("SKIP", &top_level_name, "Already a symlink.");
+            continue;
         }
 
-        // 3. Update backup.toml
-        let mut backup_toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
-        if !backup_toml_path.exists() {
-            // Check repo config if not in XDG
-            backup_toml_path = paths.config.join("bkzyn").join("backup.toml");
-        }
-        if !backup_toml_path.exists() {
-            // Check repo root
-            backup_toml_path = paths.repo.join("backup.toml");
-        }
-
-        if backup_toml_path.exists() {
+        if target_path.exists() {
             ui.status(
-                "INFO",
-                "Config",
-                &format!("Updating {}...", backup_toml_path.display()),
+                "SKIP",
+                &top_level_name,
+                &format!(
+                    "Target {} already exists in the repository. Skipping.",
+                    target_path.display()
+                ),
             );
-            let toml_str = fs::read_to_string(&backup_toml_path)?;
-            if let Ok(mut doc) = toml_str.parse::<toml_edit::DocumentMut>() {
-                if let Some(configs) = doc.get_mut("configs").and_then(|i| i.as_array_mut()) {
-                    let mut found = false;
-                    for item in configs.iter() {
-                        if item.as_str() == Some(&app_name) {
-                            found = true;
-                            break;
+            continue;
+        }
+
+        if !dry_run {
+            ui.status(
+                "COPY",
+                &top_level_name,
+                &format!("{} -> {}", source_path.display(), target_path.display()),
+            );
+
+            // Setup ignore matcher if ignores are provided
+            let mut exclude_set = None;
+            if let Some(ig) = ignores {
+                let mut builder = globset::GlobSetBuilder::new();
+                for pattern in ig {
+                    if let Ok(glob) = globset::Glob::new(pattern) {
+                        builder.add(glob);
+                    }
+                }
+                exclude_set = builder.build().ok();
+            }
+
+            if source_path.is_dir() {
+                // Copy directory but apply ignores
+                if let Err(e) =
+                    copy_dir_with_ignores(source_path, &target_path, source_path, &exclude_set)
+                {
+                    ui.warn("Copy", &format!("Failed to copy directory: {}", e));
+                    continue;
+                }
+            } else {
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(source_path, &target_path)?;
+            }
+
+            // Update backup.toml if it exists
+            if let Some(backup_toml_path) = &backup_toml_path {
+                ui.status(
+                    "INFO",
+                    "Config",
+                    &format!("Updating {}...", backup_toml_path.display()),
+                );
+
+                let toml_str = fs::read_to_string(backup_toml_path)?;
+                if let Ok(mut doc) = toml_str.parse::<toml_edit::DocumentMut>() {
+                    // 1. Ensure app is in [config] whitelist
+                    if !doc.contains_table("config") {
+                        doc["config"] =
+                            toml_edit::Item::Table(toml_edit::table().into_table().unwrap());
+                    }
+                    let config_table = doc["config"].as_table_mut().unwrap();
+
+                    if !config_table.contains_key("whitelists") {
+                        config_table["whitelists"] = toml_edit::Item::Value(
+                            toml_edit::Value::Array(toml_edit::Array::new()),
+                        );
+                    }
+
+                    if let Some(whitelist) = config_table["whitelists"].as_array_mut() {
+                        let mut found = false;
+                        for item in whitelist.iter() {
+                            if item.as_str() == Some(&top_level_name) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            whitelist.push(&top_level_name);
                         }
                     }
-                    if !found {
-                        configs.push(&app_name);
 
-                        // Re-sort alphabetically to keep it clean
-                        let mut strings: Vec<String> = configs
-                            .iter()
-                            .filter_map(|i| i.as_str().map(|s| s.to_string()))
-                            .collect();
-                        strings.sort();
+                    // 2. If it's a deep file, ensure it's whitelisted for the app
+                    // Use the standard [config.myapp] table instead of flattened string
+                    if is_deep_file {
+                        let relative_to_app = relative_path
+                            .strip_prefix(&top_level_name)
+                            .unwrap()
+                            .to_string_lossy()
+                            .to_string();
 
-                        configs.clear();
-                        for s in strings {
-                            configs.push(s);
+                        if !config_table.contains_table(&top_level_name) {
+                            let table = toml_edit::Table::new();
+                            config_table.insert(&top_level_name, toml_edit::Item::Table(table));
+                        }
+                        let app_table = config_table[&top_level_name].as_table_mut().unwrap();
+
+                        if !app_table.contains_key("whitelists") {
+                            app_table["whitelists"] = toml_edit::Item::Value(
+                                toml_edit::Value::Array(toml_edit::Array::new()),
+                            );
+                        }
+                        if let Some(wl) = app_table["whitelists"].as_array_mut() {
+                            let mut found = false;
+                            for item in wl.iter() {
+                                if item.as_str() == Some(&relative_to_app) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if !found {
+                                wl.push(relative_to_app);
+                            }
+                        }
+                    }
+
+                    // 3. Inject ignores if provided
+                    if let Some(ig) = ignores {
+                        if !config_table.contains_table(&top_level_name) {
+                            let table = toml_edit::Table::new();
+                            config_table.insert(&top_level_name, toml_edit::Item::Table(table));
+                        }
+                        let app_table = config_table[&top_level_name].as_table_mut().unwrap();
+
+                        if !app_table.contains_key("ignores") {
+                            app_table["ignores"] = toml_edit::Item::Value(toml_edit::Value::Array(
+                                toml_edit::Array::new(),
+                            ));
                         }
 
-                        // Write to the source file
-                        fs::write(&backup_toml_path, doc.to_string())?;
-
-                        // Sync it instantly into the repository so the Git commit grabs it!
-                        let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
-                        if backup_toml_path != repo_toml_path {
-                            let _ = fs::copy(&backup_toml_path, &repo_toml_path);
+                        if let Some(ig_arr) = app_table["ignores"].as_array_mut() {
+                            for pattern in ig {
+                                let mut found = false;
+                                for item in ig_arr.iter() {
+                                    if item.as_str() == Some(pattern) {
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if !found {
+                                    ig_arr.push(pattern);
+                                }
+                            }
                         }
+                    }
+
+                    // Write to the source file
+                    fs::write(backup_toml_path, doc.to_string())?;
+
+                    // Sync it instantly into the repository
+                    let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
+                    if backup_toml_path != &repo_toml_path {
+                        let _ = fs::copy(backup_toml_path, &repo_toml_path);
                     }
                 }
             }
+        } else {
+            ui.status("SKIP", &top_level_name, "Dry run - no files moved.");
         }
-    } else {
-        ui.status("SKIP", &app_name, "Dry run - no files moved or symlinked.");
     }
 
-    ui.done(&format!(
-        "Successfully added {} (run `bkzyn save` to commit)",
-        app_name
-    ));
+    ui.done("Successfully added paths (run `bkzyn save` to commit)");
     Ok(())
 }
 
-fn copy_dir_all(
+fn copy_dir_with_ignores(
     src: impl AsRef<std::path::Path>,
     dst: impl AsRef<std::path::Path>,
+    base_src: impl AsRef<std::path::Path>,
+    ignores: &Option<globset::GlobSet>,
 ) -> std::io::Result<()> {
     fs::create_dir_all(&dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
+        let path = entry.path();
+
+        if let Some(ig) = ignores {
+            if let Ok(rel_path) = path.strip_prefix(&base_src) {
+                if ig.is_match(rel_path) {
+                    continue; // Skip ignored
+                }
+            }
+        }
+
         let ty = entry.file_type()?;
         if ty.is_dir() {
-            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            copy_dir_with_ignores(
+                path,
+                dst.as_ref().join(entry.file_name()),
+                base_src.as_ref(),
+                ignores,
+            )?;
         } else {
-            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            fs::copy(path, dst.as_ref().join(entry.file_name()))?;
         }
     }
     Ok(())
@@ -188,10 +302,9 @@ mod tests {
         let outside_path = paths.repo.join("outside.txt");
         fs::write(&outside_path, "test").unwrap();
 
-        let result = run(&paths, &outside_path, false, false);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Only paths inside"));
+        // Warning generated and skipped, returning Ok(())
+        let result = run(&paths, vec![outside_path], None, false, false);
+        assert!(result.is_ok()); // Skip logic implemented
     }
 
     #[test]
@@ -199,8 +312,86 @@ mod tests {
         let (_dir, paths) = setup_test_env();
         let bad_path = paths.xdg_config.join("does_not_exist");
 
-        let result = run(&paths, &bad_path, false, false);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not exist"));
+        // Warning generated and skipped, returning Ok(())
+        let result = run(&paths, vec![bad_path], None, false, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_add_dir_copies_and_updates_toml() {
+        let (_dir, paths) = setup_test_env();
+
+        // Source app directory in xdg_config.
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(app_dir.join("settings.toml"), "value = 1").unwrap();
+
+        // Provide a backup.toml so the update path runs.
+        let bkzyn_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&bkzyn_dir).unwrap();
+        fs::write(bkzyn_dir.join("backup.toml"), "[config]\nwhitelist = []\n").unwrap();
+
+        run(&paths, vec![app_dir], None, false, false).unwrap();
+
+        // Dir must be copied into the repo.
+        assert!(paths.config.join("myapp").join("settings.toml").exists());
+
+        // backup.toml must now include "myapp".
+        let toml_content = fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
+        assert!(toml_content.contains("myapp"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_add_already_symlinked_returns_ok() {
+        let (_dir, paths) = setup_test_env();
+
+        // Make xdg_config/myapp a symlink (simulating already added).
+        let app_dir = paths.xdg_config.join("myapp");
+        let real_dir = paths.repo.join("real_myapp");
+        fs::create_dir_all(&real_dir).unwrap();
+        std::os::unix::fs::symlink(&real_dir, &app_dir).unwrap();
+
+        let result = run(&paths, vec![app_dir], None, false, false);
+        assert!(result.is_ok());
+        // Repo target must NOT have been created (early return before copy).
+        assert!(!paths.config.join("myapp").exists());
+    }
+
+    #[test]
+    fn test_add_target_exists_in_repo_skips() {
+        let (_dir, paths) = setup_test_env();
+
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+
+        // Pre-create the target in the repo to trigger the conflict.
+        fs::create_dir_all(paths.config.join("myapp")).unwrap();
+
+        // Does not error anymore, just skips!
+        let result = run(&paths, vec![app_dir], None, false, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_add_dry_run_no_side_effects() {
+        let (_dir, paths) = setup_test_env();
+
+        let app_dir = paths.xdg_config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+        fs::write(app_dir.join("cfg.toml"), "x = 1").unwrap();
+
+        let bkzyn_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&bkzyn_dir).unwrap();
+        fs::write(bkzyn_dir.join("backup.toml"), "[config]\nwhitelist = []\n").unwrap();
+
+        run(&paths, vec![app_dir], None, true, false).unwrap();
+
+        // Dry-run must not copy anything to the repo.
+        assert!(!paths.config.join("myapp").exists());
+
+        // backup.toml must be unchanged.
+        let toml_content = fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
+        assert!(!toml_content.contains("myapp"));
     }
 }
