@@ -3,7 +3,7 @@ use minijinja::Environment;
 use std::fs;
 use std::path::PathBuf;
 
-/// Restores configuration symlinks from repository config directory to the system.
+/// Restores and copies configurations from repository config directory to the system.
 pub fn run(
     paths: &crate::AppPaths,
     dry_run: bool,
@@ -27,6 +27,7 @@ pub fn run(
 
     // Load host variables for templating
     let mut env = Environment::new();
+    env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
     let host_toml = paths.xdg_config.join("bkzyn").join("host.toml");
     let host_context: toml::Value = if host_toml.exists() {
         let content = fs::read_to_string(&host_toml)?;

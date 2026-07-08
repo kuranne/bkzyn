@@ -83,6 +83,24 @@ pub fn run(
                     tar.append_dir_all(&cat_name, entry.path())?;
                     let enc = tar.into_inner()?;
                     enc.finish()?;
+
+                    // Clean up old archives, keeping only the 5 most recent
+                    if let Ok(entries) = fs::read_dir(&cat_old_dir) {
+                        let mut archives: Vec<std::path::PathBuf> = entries
+                            .filter_map(|e| e.ok())
+                            .map(|e| e.path())
+                            .filter(|p| p.extension().is_some_and(|ext| ext == "zst"))
+                            .collect();
+
+                        // Sort alphabetically (date format YYYY-MM-DDTHHMMSS makes this chronological)
+                        archives.sort();
+
+                        if archives.len() > 5 {
+                            for archive in archives.iter().take(archives.len() - 5) {
+                                let _ = fs::remove_file(archive);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -290,6 +308,36 @@ pub fn run(
                             "Copy",
                             &format!("Failed to copy {} ({}) - skipping.", rel_path.display(), e),
                         );
+                    }
+                }
+            }
+
+            // Sweep destination for zombie files (files that exist in backup but were deleted from system)
+            if dest_path.exists() {
+                let dest_walker = WalkBuilder::new(&dest_path).standard_filters(false).build();
+                let mut to_delete = Vec::new();
+
+                for result in dest_walker {
+                    if let Ok(entry) = result {
+                        let file_type = entry.file_type();
+                        if file_type.as_ref().is_none_or(|ft| ft.is_dir()) {
+                            continue;
+                        }
+
+                        if let Ok(rel_path) = entry.path().strip_prefix(&dest_path) {
+                            let src_file = src_path.join(rel_path);
+
+                            if !src_file.exists() && !exclude_set.is_match(rel_path) {
+                                to_delete.push((rel_path.to_path_buf(), entry.path().to_path_buf()));
+                            }
+                        }
+                    }
+                }
+
+                for (rel, full) in to_delete {
+                    ui.status("DELETE", &app, &format!("Zombie file removed: {}", rel.display()));
+                    if !dry_run {
+                        let _ = fs::remove_file(&full);
                     }
                 }
             }

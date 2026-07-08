@@ -76,6 +76,7 @@ run_bkzyn log
 
 echo "--> 8. bkzyn sync"
 # Create a dummy remote and set upstream so sync works
+rm -rf /tmp/dummy_remote.git
 git init --bare /tmp/dummy_remote.git
 git -C data remote add origin /tmp/dummy_remote.git
 git -C data push -u origin HEAD
