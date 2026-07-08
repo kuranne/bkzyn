@@ -89,16 +89,9 @@ pub fn run(
     }
 
     // 2. Read config
-    let mut toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
-    if !toml_path.exists() {
-        toml_path = paths.config.join("bkzyn").join("backup.toml");
-    }
-    if !toml_path.exists() {
-        toml_path = paths.repo.join("backup.toml");
-    }
-    if !toml_path.exists() {
-        return Err("backup.toml not found in configuration or repository directory".into());
-    }
+    let toml_path = paths
+        .get_backup_toml_path()
+        .ok_or("backup.toml not found in configuration or repository directory")?;
     let config = BackupConfig::load(toml_path)?;
 
     // 3. Sync categories

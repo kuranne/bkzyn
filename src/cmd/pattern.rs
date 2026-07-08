@@ -12,21 +12,9 @@ pub fn run(
     let ui = crate::cli::CliManager::new(verbose);
     let action_name = if is_include { "include" } else { "exclude" };
 
-    let mut backup_toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
-    if !backup_toml_path.exists() {
-        backup_toml_path = paths.config.join("bkzyn").join("backup.toml");
-    }
-    if !backup_toml_path.exists() {
-        backup_toml_path = paths.repo.join("backup.toml");
-    }
-
-    if !backup_toml_path.exists() {
-        return Err(format!(
-            "Could not find backup.toml at {}",
-            backup_toml_path.display()
-        )
-        .into());
-    }
+    let backup_toml_path = paths
+        .get_backup_toml_path()
+        .ok_or("Could not find backup.toml")?;
 
     ui.status(
         "INFO",

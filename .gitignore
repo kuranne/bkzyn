@@ -14,9 +14,5 @@
 **/Cargo.lock
 **/.old/**
 **/target/**
-```.gemini
-.venv
-data
-Brewfile
-flake.nix
-LOGIC.mdbackup.toml
+**/data/
+**/.agents/

@@ -79,17 +79,7 @@ pub fn run(
         }
 
         // 3. Update backup.toml
-        let mut backup_toml_path = paths.xdg_config.join("bkzyn").join("backup.toml");
-        if !backup_toml_path.exists() {
-            // Check repo config if not in XDG
-            backup_toml_path = paths.config.join("bkzyn").join("backup.toml");
-        }
-        if !backup_toml_path.exists() {
-            // Check repo root
-            backup_toml_path = paths.repo.join("backup.toml");
-        }
-
-        if backup_toml_path.exists() {
+        if let Some(backup_toml_path) = paths.get_backup_toml_path() {
             ui.status(
                 "INFO",
                 "Config",
@@ -97,36 +87,41 @@ pub fn run(
             );
             let toml_str = fs::read_to_string(&backup_toml_path)?;
             if let Ok(mut doc) = toml_str.parse::<toml_edit::DocumentMut>() {
-                if let Some(configs) = doc.get_mut("configs").and_then(|i| i.as_array_mut()) {
-                    let mut found = false;
-                    for item in configs.iter() {
-                        if item.as_str() == Some(&app_name) {
-                            found = true;
-                            break;
+                if let Some(config_table) = doc.get_mut("config").and_then(|i| i.as_table_mut()) {
+                    if let Some(includes) = config_table
+                        .get_mut("include")
+                        .and_then(|i| i.as_array_mut())
+                    {
+                        let mut found = false;
+                        for item in includes.iter() {
+                            if item.as_str() == Some(&app_name) {
+                                found = true;
+                                break;
+                            }
                         }
-                    }
-                    if !found {
-                        configs.push(&app_name);
+                        if !found {
+                            includes.push(&app_name);
 
-                        // Re-sort alphabetically to keep it clean
-                        let mut strings: Vec<String> = configs
-                            .iter()
-                            .filter_map(|i| i.as_str().map(|s| s.to_string()))
-                            .collect();
-                        strings.sort();
+                            // Re-sort alphabetically to keep it clean
+                            let mut strings: Vec<String> = includes
+                                .iter()
+                                .filter_map(|i| i.as_str().map(|s| s.to_string()))
+                                .collect();
+                            strings.sort();
 
-                        configs.clear();
-                        for s in strings {
-                            configs.push(s);
-                        }
+                            includes.clear();
+                            for s in strings {
+                                includes.push(s);
+                            }
 
-                        // Write to the source file
-                        fs::write(&backup_toml_path, doc.to_string())?;
+                            // Write to the source file
+                            fs::write(&backup_toml_path, doc.to_string())?;
 
-                        // Sync it instantly into the repository so the Git commit grabs it!
-                        let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
-                        if backup_toml_path != repo_toml_path {
-                            let _ = fs::copy(&backup_toml_path, &repo_toml_path);
+                            // Sync it instantly into the repository so the Git commit grabs it!
+                            let repo_toml_path = paths.config.join("bkzyn").join("backup.toml");
+                            if backup_toml_path != repo_toml_path {
+                                let _ = fs::copy(&backup_toml_path, &repo_toml_path);
+                            }
                         }
                     }
                 }

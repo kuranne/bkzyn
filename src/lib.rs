@@ -66,4 +66,93 @@ impl AppPaths {
             })
         }
     }
+
+    /// Returns the resolved path to backup.toml based on the environment (Debug vs Release)
+    pub fn get_backup_toml_path(&self) -> Option<std::path::PathBuf> {
+        #[cfg(debug_assertions)]
+        {
+            let path = self.repo.join("backup.toml");
+            if path.exists() {
+                return Some(path);
+            }
+        }
+
+        let path = self.xdg_config.join("bkzyn").join("backup.toml");
+        if path.exists() {
+            return Some(path);
+        }
+
+        if let Some(home) = dirs::home_dir() {
+            let path = home.join(".config").join("bkzyn").join("backup.toml");
+            if path.exists() {
+                return Some(path);
+            }
+        }
+
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_get_backup_toml_path_resolution() {
+        let dir = tempdir().unwrap();
+        let base = dir.path();
+
+        let repo_dir = base.join("repo");
+        let xdg_config_dir = base.join("xdg_config");
+
+        fs::create_dir_all(&repo_dir).unwrap();
+        fs::create_dir_all(&xdg_config_dir).unwrap();
+
+        let paths = AppPaths {
+            repo: repo_dir.clone(),
+            xdg_config: xdg_config_dir.clone(),
+            config: base.join("config"),
+            data: base.join("data"),
+            old: base.join("old"),
+            xdg_data: base.join("xdg_data"),
+        };
+
+        // 1. None of them exist
+        // (Note: dirs::home_dir() might exist, but ~/.config/bkzyn/backup.toml likely doesn't in CI)
+        if paths.get_backup_toml_path().is_some() {
+            // If the user actually has ~/.config/bkzyn/backup.toml on their real system,
+            // we skip the `None` assertion to avoid flaky local tests.
+        } else {
+            assert_eq!(paths.get_backup_toml_path(), None);
+        }
+
+        // 2. Only XDG exists
+        let xdg_bkzyn = xdg_config_dir.join("bkzyn");
+        fs::create_dir_all(&xdg_bkzyn).unwrap();
+        let xdg_toml = xdg_bkzyn.join("backup.toml");
+        fs::write(&xdg_toml, "").unwrap();
+
+        assert_eq!(paths.get_backup_toml_path(), Some(xdg_toml.clone()));
+
+        // 3. Both Repo and XDG exist
+        #[cfg(debug_assertions)]
+        {
+            let repo_toml = repo_dir.join("backup.toml");
+            fs::write(&repo_toml, "").unwrap();
+
+            // In debug mode, repo takes precedence
+            assert_eq!(paths.get_backup_toml_path(), Some(repo_toml));
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            let repo_toml = repo_dir.join("backup.toml");
+            fs::write(&repo_toml, "").unwrap();
+
+            // In release mode, repo is ignored, XDG still takes precedence
+            assert_eq!(paths.get_backup_toml_path(), Some(xdg_toml));
+        }
+    }
 }

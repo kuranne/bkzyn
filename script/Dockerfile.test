@@ -4,7 +4,7 @@ FROM rust:slim-bullseye
 RUN apt-get update && apt-get install -y \
     sudo curl git build-essential procps file gcc
 
-# Create a non-root user (Homebrew cannot run as root)
+# Create a non-root user
 RUN useradd -m -s /bin/bash testuser && \
     usermod -aG sudo testuser && \
     echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
@@ -13,12 +13,16 @@ USER testuser
 ENV USER=testuser
 WORKDIR /home/testuser
 
-# Install Homebrew quietly
-RUN NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Setup Homebrew environment
-ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
-
 # Prepare application directory
-RUN mkdir -p /home/testuser/app && chown testuser:testuser /home/testuser/app
+RUN mkdir -p /home/testuser/app
 WORKDIR /home/testuser/app
+
+# Cache Rust dependencies for much faster incremental builds
+COPY --chown=testuser:testuser Cargo.toml Cargo.lock ./
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "" > src/lib.rs && \
+    cargo fetch && \
+    cargo build && \
+    cargo test --no-run && \
+    rm -rf src
