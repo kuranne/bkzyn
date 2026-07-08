@@ -134,7 +134,7 @@ pub fn run(
     }
 
     // 2. copy config/* to $XDG_CONFIG_HOME
-    super::restore::run(paths, dry_run, verbose)?;
+    super::restore::run(paths, Vec::new(), dry_run, verbose)?;
 
     // 3. add a line in global zshenv to use $ZDOTDIR for zsh
     if !no_check_zsh {
@@ -243,9 +243,19 @@ mod tests {
             xdg_data: base.join("xdg_data"),
         };
         fs::create_dir_all(&paths.config).unwrap();
-        fs::create_dir_all(&paths.data).unwrap();
         fs::create_dir_all(&paths.xdg_config).unwrap();
         fs::create_dir_all(&paths.xdg_data).unwrap();
+        
+        let bkzyn_dir = paths.xdg_config.join("bkzyn");
+        fs::create_dir_all(&bkzyn_dir).unwrap();
+        fs::write(
+            bkzyn_dir.join("backup.toml"),
+            r#"
+[config]
+whitelists = ["myapp"]
+"#,
+        ).unwrap();
+        
         (dir, paths)
     }
 

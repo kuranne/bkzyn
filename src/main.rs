@@ -39,7 +39,10 @@ enum Commands {
         no_check_zsh: bool,
     },
     /// Restore configuration symlinks from repository to local system
-    Restore,
+    Restore {
+        /// Optional specific paths to restore (e.g. ~/.config/tmux)
+        paths: Vec<std::path::PathBuf>,
+    },
     /// Move configurations into the backup repository
     Add {
         /// The paths to the files or directories in ~/.config to add
@@ -112,7 +115,7 @@ fn main() {
             cli.dry_run,
             cli.verbose,
         ),
-        Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Restore { paths: p } => restore::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Add { paths: p, ignores } => add::run(
             &paths,
             p.clone(),
@@ -182,6 +185,6 @@ mod tests {
         let cli = Cli::parse_from(args);
         assert!(!cli.verbose);
         assert!(cli.dry_run);
-        assert!(matches!(cli.command, Commands::Restore));
+        assert!(matches!(cli.command, Commands::Restore { .. }));
     }
 }
