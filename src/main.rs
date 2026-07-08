@@ -1,4 +1,4 @@
-use bkzyn::cmd::{add, backup, log, pattern, restore, rollback, save, setup, status, sync};
+use bkzyn::cmd::{add, backup, log, pattern, remove, restore, rollback, save, setup, status, sync};
 use clap::{Parser, Subcommand};
 use std::process;
 
@@ -43,14 +43,19 @@ enum Commands {
         /// Optional specific paths to restore (e.g. ~/.config/tmux)
         paths: Vec<std::path::PathBuf>,
     },
-    /// Move configurations into the backup repository
+    /// Add new configurations to the backup repository
     Add {
-        /// The paths to the files or directories in ~/.config to add
+        /// The paths to the files or directories to add
         paths: Vec<std::path::PathBuf>,
-
-        /// Optional ignore patterns to skip when adding and to register in backup.toml
+        /// Optional glob patterns to ignore when adding a directory
         #[arg(short = 'i', long = "ignore")]
         ignores: Option<Vec<String>>,
+    },
+    /// Remove configurations from the backup repository and stop tracking them
+    #[command(visible_aliases = ["rm"])]
+    Remove {
+        /// The paths to the files or directories to remove
+        paths: Vec<std::path::PathBuf>,
     },
     /// Add paths to the ignore list in backup.toml
     Ignore {
@@ -103,6 +108,14 @@ fn main() {
         Commands::Backup { set_url } => {
             backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose)
         }
+        Commands::Add { paths: p, ignores } => add::run(
+            &paths,
+            p.clone(),
+            ignores.as_deref(),
+            cli.dry_run,
+            cli.verbose,
+        ),
+        Commands::Remove { paths: p } => remove::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Setup {
             zdotdir,
             no_check_zsh,
@@ -114,13 +127,6 @@ fn main() {
             cli.verbose,
         ),
         Commands::Restore { paths: p } => restore::run(&paths, p.clone(), cli.dry_run, cli.verbose),
-        Commands::Add { paths: p, ignores } => add::run(
-            &paths,
-            p.clone(),
-            ignores.as_deref(),
-            cli.dry_run,
-            cli.verbose,
-        ),
         Commands::Ignore { paths: p } => pattern::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Save { category, message } => save::run(
             &paths,

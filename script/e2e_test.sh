@@ -14,16 +14,19 @@ E2E_DIR="/tmp/bkzyn_e2e"
 rm -rf "$E2E_DIR"
 cp -r "$PWD" "$E2E_DIR"
 cd "$E2E_DIR"
+echo "" > backup.toml
 
 export XDG_CONFIG_HOME="$E2E_DIR/mock_xdg_config"
 export XDG_DATA_HOME="$E2E_DIR/mock_xdg_data"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
 
 # Re-init git to avoid messing with the host repo and allow clean history testing
-rm -rf .git data/.git
+rm -rf .git data
+mkdir data
 git init -b main
 git config --global user.email "test@example.com"
 git config --global user.name "E2E Test"
+git config --global commit.gpgsign false
 git add .
 git commit -m "Initial commit"
 
@@ -57,6 +60,19 @@ mkdir -p "$XDG_CONFIG_HOME/myapp/deep"
 echo "deep" > "$XDG_CONFIG_HOME/myapp/deep/file.txt"
 run_bkzyn add "$XDG_CONFIG_HOME/myapp/deep/file.txt"
 grep -q "\"deep/file.txt\"" backup.toml || (echo "Deep add failed" && exit 1)
+
+echo "--> 3.5. bkzyn remove"
+run_bkzyn rm "$XDG_CONFIG_HOME/myapp/deep/file.txt"
+grep -q "\"deep/file.txt\"" backup.toml && (echo "Remove failed to clear toml" && exit 1)
+if [ -f "data/config/myapp/deep/file.txt" ]; then
+    echo "Error: Remove failed to clear from repo"
+    exit 1
+fi
+# Host file should still exist
+if [ ! -f "$XDG_CONFIG_HOME/myapp/deep/file.txt" ]; then
+    echo "Error: Remove accidentally deleted host file"
+    exit 1
+fi
 
 echo "--> 4. bkzyn backup"
 # Modify source config (by removing it first so we can simulate real disconnected changes)
