@@ -29,7 +29,15 @@ enum Commands {
         set_url: Option<String>,
     },
     /// Install brew packages and set up configuration symlinks
-    Setup,
+    Setup {
+        /// Optional custom ZDOTDIR path. If flag is passed without value, defaults to $XDG_CONFIG_HOME/zsh.
+        #[arg(long, num_args = 0..=1, default_missing_value = "DEFAULT_ZDOTDIR")]
+        zdotdir: Option<String>,
+
+        /// Disable ZSH Bootstraps check
+        #[arg(long)]
+        no_check_zsh: bool,
+    },
     /// Restore configuration symlinks from repository to local system
     Restore,
     /// Move a configuration into the backup repository and symlink it back
@@ -97,7 +105,9 @@ fn main() {
         Commands::Backup { set_url } => {
             backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose)
         }
-        Commands::Setup => setup::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Setup { zdotdir, no_check_zsh } => {
+            setup::run(&paths, zdotdir.as_deref(), *no_check_zsh, cli.dry_run, cli.verbose)
+        }
         Commands::Restore => restore::run(&paths, cli.dry_run, cli.verbose),
         Commands::Add { path } => add::run(&paths, path, cli.dry_run, cli.verbose),
         Commands::Include { app, pattern: pat } => {
@@ -156,7 +166,7 @@ mod tests {
         let cli = Cli::parse_from(args);
         assert!(cli.verbose);
         assert!(!cli.dry_run);
-        assert!(matches!(cli.command, Commands::Setup));
+        assert!(matches!(cli.command, Commands::Setup { .. }));
     }
 
     #[test]

@@ -15,6 +15,8 @@ fn command_exists(cmd: &str) -> bool {
 /// Sets up packages and copies configurations.
 pub fn run(
     paths: &crate::AppPaths,
+    zdotdir_flag: Option<&str>,
+    no_check_zsh: bool,
     dry_run: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -135,56 +137,86 @@ pub fn run(
     super::restore::run(paths, dry_run, verbose)?;
 
     // 3. add a line in global zshenv to use $ZDOTDIR for zsh
-    let zshenv_path = if std::path::Path::new("/etc/zsh").exists() {
-        "/etc/zsh/zshenv"
-    } else {
-        "/etc/zshenv"
-    };
+    if !no_check_zsh {
+        let should_bootstrap = if zdotdir_flag.is_some() {
+            true // Either `--zdotdir` or `--zdotdir=...` was given
+        } else {
+            // Check if zsh exists in repo
+            if paths.repo.join("data/config/zsh").exists() {
+                // Ask user
+                print!("ZSH configurations found in repository. Do you want to set up ZSH bootstraps? [y/N]: ");
+                std::io::stdout().flush()?;
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                input.trim().eq_ignore_ascii_case("y")
+            } else {
+                false
+            }
+        };
 
-    ui.status(
-        "INFO",
-        "Setup",
-        &format!("Checking {} for ZDOTDIR configuration...", zshenv_path),
-    );
+        if should_bootstrap {
+            let zdotdir = if let Some(val) = zdotdir_flag {
+                if val == "DEFAULT_ZDOTDIR" {
+                    "$XDG_CONFIG_HOME/zsh"
+                } else {
+                    val
+                }
+            } else {
+                "$XDG_CONFIG_HOME/zsh"
+            };
 
-    let zshenv_content = fs::read_to_string(zshenv_path).unwrap_or_default();
-    if !zshenv_content.contains("ZDOTDIR") {
-        ui.status(
-            "INFO",
-            "Setup",
-            &format!("Adding ZDOTDIR to {} (requires sudo)...", zshenv_path),
-        );
+            let zshenv_path = if std::path::Path::new("/etc/zsh").exists() {
+                "/etc/zsh/zshenv"
+            } else {
+                "/etc/zshenv"
+            };
 
-        let snippet = r#"
+            ui.status(
+                "INFO",
+                "Setup",
+                &format!("Checking {} for ZDOTDIR configuration...", zshenv_path),
+            );
+
+            let zshenv_content = fs::read_to_string(zshenv_path).unwrap_or_default();
+            if !zshenv_content.contains("ZDOTDIR") {
+                ui.status(
+                    "INFO",
+                    "Setup",
+                    &format!("Adding ZDOTDIR to {} (requires sudo)...", zshenv_path),
+                );
+
+                let snippet = format!(r#"
 # --- XDG & ZDOTDIR bootstrap ---
 if [[ -z "$XDG_CONFIG_HOME" ]]; then
     export XDG_CONFIG_HOME="$HOME/.config"
 fi
 
-if [[ -d "$XDG_CONFIG_HOME/zsh" ]]; then
-    export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
+if [[ -d "{zdotdir}" ]]; then
+    export ZDOTDIR="{zdotdir}"
 fi
-"#;
-        if !dry_run {
-            let mut child = Command::new("sudo")
-                .arg("tee")
-                .arg("-a")
-                .arg(zshenv_path)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .spawn()?;
+"#);
+                if !dry_run {
+                    let mut child = Command::new("sudo")
+                        .arg("tee")
+                        .arg("-a")
+                        .arg(zshenv_path)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::null())
+                        .spawn()?;
 
-            if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(snippet.as_bytes())?;
+                    if let Some(mut stdin) = child.stdin.take() {
+                        stdin.write_all(snippet.as_bytes())?;
+                    }
+                    child.wait()?;
+                }
+            } else {
+                ui.status(
+                    "SKIP",
+                    "Setup",
+                    &format!("ZDOTDIR already configured in {}.", zshenv_path),
+                );
             }
-            child.wait()?;
         }
-    } else {
-        ui.status(
-            "SKIP",
-            "Setup",
-            &format!("ZDOTDIR already configured in {}.", zshenv_path),
-        );
     }
 
     ui.done("Successful setup");
@@ -235,7 +267,7 @@ nix = ["world"]
         fs::write(data_dir.join("flake.nix"), "{}").unwrap();
 
         // Run setup with dry_run = true
-        let result = run(&paths, true, false);
+        let result = run(&paths, None, false, true, false);
         assert!(
             result.is_ok(),
             "Setup dry_run should succeed without executing system commands"
@@ -249,7 +281,7 @@ nix = ["world"]
         fs::create_dir_all(&pkg_dir).unwrap();
         fs::write(pkg_dir.join("packages.toml"), "invalid [ toml {").unwrap();
 
-        let result = run(&paths, true, false);
+        let result = run(&paths, None, false, true, false);
         assert!(
             result.is_ok(),
             "Setup should warn on bad toml but still succeed"
