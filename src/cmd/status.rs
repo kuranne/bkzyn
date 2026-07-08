@@ -42,8 +42,10 @@ pub fn run(
                 continue;
             }
 
-            // Use git diff --no-index for a nice colored output of differences
+            // Use git diff --no-index for a nice colored output of differences.
+            // --no-pager prevents git from opening `less` on TTY environments.
             let status = Command::new("git")
+                .arg("--no-pager")
                 .arg("diff")
                 .arg("--no-index")
                 .arg("--color=always")

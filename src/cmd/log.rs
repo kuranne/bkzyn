@@ -12,9 +12,11 @@ pub fn run(
         return Err("Data directory does not exist. Run setup or backup first.".into());
     }
 
-    // Run git log with pretty formatting
+    // Run git log with pretty formatting.
+    // --no-pager prevents git from opening `less` on TTY environments.
     let status = Command::new("git")
         .current_dir(&data_dir)
+        .arg("--no-pager")
         .arg("log")
         .arg("--color=always")
         .arg("--pretty=format:%C(yellow)%h%Creset - %C(cyan)%ad%Creset - %s %C(green)(%cr)%Creset")
