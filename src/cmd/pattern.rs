@@ -154,8 +154,7 @@ mod tests {
     #[test]
     fn test_pattern_duplicate_not_added_twice() {
         let (_dir, paths) = setup_test_env();
-        let toml_path =
-            write_backup_toml(&paths, "[myapp]\ninclude = [\"*.cfg\"]\n");
+        let toml_path = write_backup_toml(&paths, "[myapp]\ninclude = [\"*.cfg\"]\n");
 
         // Add same pattern twice.
         run(&paths, "myapp", "*.cfg", true, false, false).unwrap();
@@ -178,4 +177,3 @@ mod tests {
         assert_eq!(content, original);
     }
 }
-

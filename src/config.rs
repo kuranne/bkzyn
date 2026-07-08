@@ -74,12 +74,14 @@ mod tests {
 
     #[test]
     fn test_load_valid_config() {
-        let f = write_toml(r#"
+        let f = write_toml(
+            r#"
 exclude = ['.git']
 
 [config]
 include = ['zsh', 'git']
-"#);
+"#,
+        );
         let cfg = BackupConfig::load(f.path()).unwrap();
         assert_eq!(cfg.exclude.unwrap(), vec![".git"]);
         let includes = cfg.items["config"].include.as_ref().unwrap();
@@ -101,7 +103,8 @@ include = ['zsh', 'git']
 
     #[test]
     fn test_categories_filters_correctly() {
-        let f = write_toml(r#"
+        let f = write_toml(
+            r#"
 [config]
 include = []
 
@@ -114,7 +117,8 @@ include = []
 [custom]
 path = "~/custom"
 include = []
-"#);
+"#,
+        );
         let cfg = BackupConfig::load(f.path()).unwrap();
         let cats = cfg.categories();
         assert!(cats.contains_key(&"config".to_string()));
@@ -125,7 +129,8 @@ include = []
 
     #[test]
     fn test_global_apps_excludes_categories() {
-        let f = write_toml(r#"
+        let f = write_toml(
+            r#"
 [config]
 include = []
 
@@ -134,7 +139,8 @@ include = []
 
 [myapp]
 include = []
-"#);
+"#,
+        );
         let cfg = BackupConfig::load(f.path()).unwrap();
         let apps = cfg.global_apps();
         assert!(apps.contains_key(&"myapp".to_string()));
@@ -145,19 +151,23 @@ include = []
     #[test]
     fn test_rulemap_applist_vs_categorymap() {
         // AppList: simple array under top-level [includes]
-        let f = write_toml(r#"
+        let f = write_toml(
+            r#"
 [includes]
 zsh = [".z*", "*.zsh"]
-"#);
+"#,
+        );
         let cfg = BackupConfig::load(f.path()).unwrap();
         let includes = cfg.includes.as_ref().unwrap();
         assert!(matches!(includes["zsh"], RuleMap::AppList(_)));
 
         // CategoryMap: key → array under [includes.config]
-        let f2 = write_toml(r#"
+        let f2 = write_toml(
+            r#"
 [includes.config]
 myapp = ["*.cfg"]
-"#);
+"#,
+        );
         let cfg2 = BackupConfig::load(f2.path()).unwrap();
         let includes2 = cfg2.includes.as_ref().unwrap();
         assert!(matches!(includes2["config"], RuleMap::CategoryMap(_)));

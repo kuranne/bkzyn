@@ -160,13 +160,7 @@ mod tests {
         // Stage a file so the commit is non-empty.
         fs::write(backup_repo.join("test.txt"), "hello").unwrap();
 
-        let result = run(
-            &paths,
-            None,
-            Some("my custom message"),
-            false,
-            false,
-        );
+        let result = run(&paths, None, Some("my custom message"), false, false);
         assert!(result.is_ok());
     }
 }

@@ -211,11 +211,7 @@ mod tests {
         // Provide a backup.toml so the update path runs.
         let bkzyn_dir = paths.xdg_config.join("bkzyn");
         fs::create_dir_all(&bkzyn_dir).unwrap();
-        fs::write(
-            bkzyn_dir.join("backup.toml"),
-            "[config]\ninclude = []\n",
-        )
-        .unwrap();
+        fs::write(bkzyn_dir.join("backup.toml"), "[config]\ninclude = []\n").unwrap();
 
         run(&paths, &app_dir, false, false).unwrap();
 
@@ -223,8 +219,7 @@ mod tests {
         assert!(paths.config.join("myapp").join("settings.toml").exists());
 
         // backup.toml must now include "myapp".
-        let toml_content =
-            fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
+        let toml_content = fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
         assert!(toml_content.contains("myapp"));
     }
 
@@ -273,11 +268,7 @@ mod tests {
 
         let bkzyn_dir = paths.xdg_config.join("bkzyn");
         fs::create_dir_all(&bkzyn_dir).unwrap();
-        fs::write(
-            bkzyn_dir.join("backup.toml"),
-            "[config]\ninclude = []\n",
-        )
-        .unwrap();
+        fs::write(bkzyn_dir.join("backup.toml"), "[config]\ninclude = []\n").unwrap();
 
         run(&paths, &app_dir, true, false).unwrap();
 
@@ -285,8 +276,7 @@ mod tests {
         assert!(!paths.config.join("myapp").exists());
 
         // backup.toml must be unchanged.
-        let toml_content =
-            fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
+        let toml_content = fs::read_to_string(bkzyn_dir.join("backup.toml")).unwrap();
         assert!(!toml_content.contains("myapp"));
     }
 }

@@ -61,4 +61,3 @@ mod tests {
             .contains("Data directory does not exist"));
     }
 }
-
