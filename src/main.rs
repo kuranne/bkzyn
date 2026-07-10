@@ -38,10 +38,16 @@ enum Commands {
         #[arg(long)]
         no_check_zsh: bool,
     },
+    /// Check templates for missing variables
+    #[command(visible_aliases = ["template-check"])]
+    Check,
     /// Restore configuration files from repository to local system
     Restore {
         /// Optional specific paths to restore (e.g. ~/.config/tmux)
         paths: Vec<std::path::PathBuf>,
+        /// Abort the restore if a template is missing variables
+        #[arg(long)]
+        strict: bool,
     },
     /// Add new configurations to the backup repository
     Add {
@@ -105,6 +111,7 @@ fn main() {
     }
 
     if let Err(e) = match &cli.command {
+        Commands::Check => restore::run(&paths, vec![], true, cli.verbose, true),
         Commands::Backup { set_url } => {
             backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose)
         }
@@ -126,7 +133,9 @@ fn main() {
             cli.dry_run,
             cli.verbose,
         ),
-        Commands::Restore { paths: p } => restore::run(&paths, p.clone(), cli.dry_run, cli.verbose),
+        Commands::Restore { paths: p, strict } => {
+            restore::run(&paths, p.clone(), cli.dry_run, cli.verbose, *strict)
+        }
         Commands::Ignore { paths: p } => pattern::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Save { category, message } => save::run(
             &paths,

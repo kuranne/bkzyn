@@ -134,7 +134,7 @@ pub fn run(
     }
 
     // 2. copy config/* to $XDG_CONFIG_HOME
-    super::restore::run(paths, Vec::new(), dry_run, verbose)?;
+    super::restore::run(paths, Vec::new(), dry_run, verbose, false)?;
 
     // 3. add a line in global zshenv to use $ZDOTDIR for zsh
     if !no_check_zsh {
