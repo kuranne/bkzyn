@@ -10,6 +10,7 @@ pub fn run(
     ignores: Option<&[String]>,
     dry_run: bool,
     verbose: bool,
+    secret: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
@@ -88,37 +89,45 @@ pub fn run(
         }
 
         if !dry_run {
-            ui.status(
-                "COPY",
-                &top_level_name,
-                &format!("{} -> {}", source_path.display(), target_path.display()),
-            );
+            if !secret {
+                ui.status(
+                    "COPY",
+                    &top_level_name,
+                    &format!("{} -> {}", source_path.display(), target_path.display()),
+                );
 
-            // Setup ignore matcher if ignores are provided
-            let mut exclude_set = None;
-            if let Some(ig) = ignores {
-                let mut builder = globset::GlobSetBuilder::new();
-                for pattern in ig {
-                    if let Ok(glob) = globset::Glob::new(pattern) {
-                        builder.add(glob);
+                // Setup ignore matcher if ignores are provided
+                let mut exclude_set = None;
+                if let Some(ig) = ignores {
+                    let mut builder = globset::GlobSetBuilder::new();
+                    for pattern in ig {
+                        if let Ok(glob) = globset::Glob::new(pattern) {
+                            builder.add(glob);
+                        }
                     }
+                    exclude_set = builder.build().ok();
                 }
-                exclude_set = builder.build().ok();
-            }
 
-            if source_path.is_dir() {
-                // Copy directory but apply ignores
-                if let Err(e) =
-                    copy_dir_with_ignores(source_path, &target_path, source_path, &exclude_set)
-                {
-                    ui.warn("Copy", &format!("Failed to copy directory: {}", e));
-                    continue;
+                if source_path.is_dir() {
+                    // Copy directory but apply ignores
+                    if let Err(e) =
+                        copy_dir_with_ignores(source_path, &target_path, source_path, &exclude_set)
+                    {
+                        ui.warn("Copy", &format!("Failed to copy directory: {}", e));
+                        continue;
+                    }
+                } else {
+                    if let Some(parent) = target_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::copy(source_path, &target_path)?;
                 }
             } else {
-                if let Some(parent) = target_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::copy(source_path, &target_path)?;
+                ui.status(
+                    "INFO",
+                    &top_level_name,
+                    "Adding secret path without copying in plaintext. Run bkzyn backup to encrypt.",
+                );
             }
 
             // Update backup.toml if it exists
@@ -131,20 +140,22 @@ pub fn run(
 
                 let toml_str = fs::read_to_string(backup_toml_path)?;
                 if let Ok(mut doc) = toml_str.parse::<toml_edit::DocumentMut>() {
-                    // 1. Ensure app is in [config] whitelist
+                    let array_name = if secret { "secrets" } else { "whitelists" };
+
+                    // 1. Ensure app is in [config] list
                     if !doc.contains_table("config") {
                         doc["config"] =
                             toml_edit::Item::Table(toml_edit::table().into_table().unwrap());
                     }
                     let config_table = doc["config"].as_table_mut().unwrap();
 
-                    if !config_table.contains_key("whitelists") {
-                        config_table["whitelists"] = toml_edit::Item::Value(
+                    if !config_table.contains_key(array_name) {
+                        config_table[array_name] = toml_edit::Item::Value(
                             toml_edit::Value::Array(toml_edit::Array::new()),
                         );
                     }
 
-                    if let Some(whitelist) = config_table["whitelists"].as_array_mut() {
+                    if let Some(whitelist) = config_table[array_name].as_array_mut() {
                         let mut found = false;
                         for item in whitelist.iter() {
                             if item.as_str() == Some(&top_level_name) {
@@ -157,7 +168,7 @@ pub fn run(
                         }
                     }
 
-                    // 2. If it's a deep file, ensure it's whitelisted for the app
+                    // 2. If it's a deep file, ensure it's listed for the app
                     // Use the standard [config.myapp] table instead of flattened string
                     if is_deep_file {
                         let relative_to_app = relative_path
@@ -172,12 +183,12 @@ pub fn run(
                         }
                         let app_table = config_table[&top_level_name].as_table_mut().unwrap();
 
-                        if !app_table.contains_key("whitelists") {
-                            app_table["whitelists"] = toml_edit::Item::Value(
+                        if !app_table.contains_key(array_name) {
+                            app_table[array_name] = toml_edit::Item::Value(
                                 toml_edit::Value::Array(toml_edit::Array::new()),
                             );
                         }
-                        if let Some(wl) = app_table["whitelists"].as_array_mut() {
+                        if let Some(wl) = app_table[array_name].as_array_mut() {
                             let mut found = false;
                             for item in wl.iter() {
                                 if item.as_str() == Some(&relative_to_app) {
@@ -303,7 +314,7 @@ mod tests {
         fs::write(&outside_path, "test").unwrap();
 
         // Warning generated and skipped, returning Ok(())
-        let result = run(&paths, vec![outside_path], None, false, false);
+        let result = run(&paths, vec![outside_path], None, false, false, false);
         assert!(result.is_ok()); // Skip logic implemented
     }
 
@@ -313,7 +324,7 @@ mod tests {
         let bad_path = paths.xdg_config.join("does_not_exist");
 
         // Warning generated and skipped, returning Ok(())
-        let result = run(&paths, vec![bad_path], None, false, false);
+        let result = run(&paths, vec![bad_path], None, false, false, false);
         assert!(result.is_ok());
     }
 
@@ -331,7 +342,7 @@ mod tests {
         fs::create_dir_all(&bkzyn_dir).unwrap();
         fs::write(bkzyn_dir.join("backup.toml"), "[config]\nwhitelist = []\n").unwrap();
 
-        run(&paths, vec![app_dir], None, false, false).unwrap();
+        run(&paths, vec![app_dir], None, false, false, false).unwrap();
 
         // Dir must be copied into the repo.
         assert!(paths.config.join("myapp").join("settings.toml").exists());
@@ -352,7 +363,7 @@ mod tests {
         fs::create_dir_all(&real_dir).unwrap();
         std::os::unix::fs::symlink(&real_dir, &app_dir).unwrap();
 
-        let result = run(&paths, vec![app_dir], None, false, false);
+        let result = run(&paths, vec![app_dir], None, false, false, false);
         assert!(result.is_ok());
         // Repo target must NOT have been created (early return before copy).
         assert!(!paths.config.join("myapp").exists());
@@ -369,7 +380,7 @@ mod tests {
         fs::create_dir_all(paths.config.join("myapp")).unwrap();
 
         // Does not error anymore, just skips!
-        let result = run(&paths, vec![app_dir], None, false, false);
+        let result = run(&paths, vec![app_dir], None, false, false, false);
         assert!(result.is_ok());
     }
 
@@ -385,7 +396,7 @@ mod tests {
         fs::create_dir_all(&bkzyn_dir).unwrap();
         fs::write(bkzyn_dir.join("backup.toml"), "[config]\nwhitelist = []\n").unwrap();
 
-        run(&paths, vec![app_dir], None, true, false).unwrap();
+        run(&paths, vec![app_dir], None, true, false, false).unwrap();
 
         // Dry-run must not copy anything to the repo.
         assert!(!paths.config.join("myapp").exists());

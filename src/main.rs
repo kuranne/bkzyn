@@ -27,6 +27,9 @@ enum Commands {
         /// Optional: set the github URL for the data repository before backing up
         #[arg(long)]
         set_url: Option<String>,
+        /// Skip encrypting and backing up secrets
+        #[arg(long)]
+        skip_secrets: bool,
     },
     /// Install brew packages and set up configuration files
     Setup {
@@ -37,6 +40,10 @@ enum Commands {
         /// Disable ZSH Bootstraps check
         #[arg(long)]
         no_check_zsh: bool,
+
+        /// Skip decrypting and restoring secrets
+        #[arg(long)]
+        skip_secrets: bool,
     },
     /// Check templates for missing variables
     #[command(visible_aliases = ["template-check"])]
@@ -48,6 +55,9 @@ enum Commands {
         /// Abort the restore if a template is missing variables
         #[arg(long)]
         strict: bool,
+        /// Skip decrypting and restoring secrets
+        #[arg(long)]
+        skip_secrets: bool,
     },
     /// Add new configurations to the backup repository
     Add {
@@ -56,12 +66,18 @@ enum Commands {
         /// Optional glob patterns to ignore when adding a directory
         #[arg(short = 'i', long = "ignore", num_args = 1..)]
         ignores: Option<Vec<String>>,
+        /// Mark this path as a secret to be encrypted during backup
+        #[arg(long)]
+        secret: bool,
     },
     /// Remove configurations from the backup repository and stop tracking them
     #[command(visible_aliases = ["rm"])]
     Remove {
         /// The paths to the files or directories to remove
         paths: Vec<std::path::PathBuf>,
+        /// Remove this path from the secrets list instead of whitelists
+        #[arg(long)]
+        secret: bool,
     },
     /// Add paths to the ignore list in backup.toml
     Ignore {
@@ -111,31 +127,32 @@ fn main() {
     }
 
     if let Err(e) = match &cli.command {
-        Commands::Check => restore::run(&paths, vec![], true, cli.verbose, true),
-        Commands::Backup { set_url } => {
-            backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose)
+        Commands::Check => restore::run(&paths, vec![], true, cli.verbose, true, true),
+        Commands::Backup { set_url, skip_secrets } => {
+            backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose, *skip_secrets)
         }
-        Commands::Add { paths: p, ignores } => add::run(
+        Commands::Add { paths: p, ignores, secret } => add::run(
             &paths,
             p.clone(),
             ignores.as_deref(),
             cli.dry_run,
             cli.verbose,
+            *secret,
         ),
-        Commands::Remove { paths: p } => remove::run(&paths, p.clone(), cli.dry_run, cli.verbose),
+        Commands::Remove { paths: p, secret } => remove::run(&paths, p.clone(), cli.dry_run, cli.verbose, *secret),
         Commands::Setup {
             zdotdir,
             no_check_zsh,
+            skip_secrets,
         } => setup::run(
             &paths,
             zdotdir.as_deref(),
             *no_check_zsh,
             cli.dry_run,
             cli.verbose,
+            *skip_secrets,
         ),
-        Commands::Restore { paths: p, strict } => {
-            restore::run(&paths, p.clone(), cli.dry_run, cli.verbose, *strict)
-        }
+        Commands::Restore { paths: p, strict, skip_secrets } => restore::run(&paths, p.clone(), cli.dry_run, cli.verbose, *strict, *skip_secrets),
         Commands::Ignore { paths: p } => pattern::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Save { category, message } => save::run(
             &paths,
@@ -171,12 +188,12 @@ mod tests {
         let cli = Cli::parse_from(args);
         assert!(!cli.verbose);
         assert!(!cli.dry_run);
-        assert!(matches!(cli.command, Commands::Backup { set_url: _ }));
+        assert!(matches!(cli.command, Commands::Backup { .. }));
 
         // Flags after subcommand
         let args = vec!["bkzyn", "backup", "-v", "--dry-run"];
         let cli = Cli::parse_from(args);
-        assert!(matches!(cli.command, Commands::Backup { set_url: _ }));
+        assert!(matches!(cli.command, Commands::Backup { .. }));
         assert!(cli.dry_run);
         assert!(cli.verbose);
     }

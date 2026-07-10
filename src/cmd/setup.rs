@@ -1,16 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
-
-fn command_exists(cmd: &str) -> bool {
-    Command::new("which")
-        .arg(cmd)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
+use crate::command_exists;
 
 /// Sets up packages and copies configurations.
 pub fn run(
@@ -19,6 +10,7 @@ pub fn run(
     no_check_zsh: bool,
     dry_run: bool,
     verbose: bool,
+    skip_secrets: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
@@ -134,7 +126,7 @@ pub fn run(
     }
 
     // 2. copy config/* to $XDG_CONFIG_HOME
-    super::restore::run(paths, Vec::new(), dry_run, verbose, false)?;
+    super::restore::run(paths, Vec::new(), dry_run, verbose, false, skip_secrets)?;
 
     // 3. add a line in global zshenv to use $ZDOTDIR for zsh
     if !no_check_zsh {
@@ -280,7 +272,7 @@ nix = ["world"]
         fs::write(data_dir.join("flake.nix"), "{}").unwrap();
 
         // Run setup with dry_run = true
-        let result = run(&paths, None, false, true, false);
+        let result = run(&paths, None, false, true, false, false);
         assert!(
             result.is_ok(),
             "Setup dry_run should succeed without executing system commands"
@@ -294,7 +286,7 @@ nix = ["world"]
         fs::create_dir_all(&pkg_dir).unwrap();
         fs::write(pkg_dir.join("packages.toml"), "invalid [ toml {").unwrap();
 
-        let result = run(&paths, None, false, true, false);
+        let result = run(&paths, None, false, true, false, false);
         assert!(
             result.is_ok(),
             "Setup should warn on bad toml but still succeed"

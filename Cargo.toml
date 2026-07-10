@@ -16,6 +16,7 @@ globset = "0.4"
 toml_edit = "0.22"
 minijinja = "2.21.0"
 indicatif = "0.17"
+tempfile = "3.27.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -9,6 +9,8 @@ pub struct BackupConfig {
     pub whitelists: Option<Vec<String>>,
     pub whitelist: Option<HashMap<String, RuleMap>>,
     pub ignore: Option<HashMap<String, RuleMap>>,
+    pub secrets: Option<HashMap<String, RuleMap>>,
+    pub gpg_recipient: Option<String>,
     #[serde(flatten)]
     pub items: HashMap<String, CategoryOrApp>,
 }
@@ -18,6 +20,7 @@ pub struct CategoryOrApp {
     pub path: Option<String>,
     pub whitelists: Option<Vec<String>>,
     pub ignores: Option<Vec<String>>,
+    pub secrets: Option<Vec<String>>,
     #[serde(flatten)]
     pub apps: HashMap<String, ItemConfig>,
 }
@@ -26,6 +29,7 @@ pub struct CategoryOrApp {
 pub struct ItemConfig {
     pub whitelists: Option<Vec<String>>,
     pub ignores: Option<Vec<String>>,
+    pub secrets: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

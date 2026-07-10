@@ -10,6 +10,7 @@ pub fn run(
     set_url: Option<&str>,
     dry_run: bool,
     verbose: bool,
+    skip_secrets: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
@@ -285,6 +286,79 @@ pub fn run(
                 }
             }
 
+            // process secrets
+            let mut secrets_rules = Vec::new();
+            if let Some(app_cfg) = cat_cfg.apps.get(&app) {
+                if let Some(list) = &app_cfg.secrets {
+                    secrets_rules.extend(list.clone());
+                }
+            }
+            if let Some(sec) = &config.secrets {
+                if let Some(RuleMap::AppList(list)) = sec.get(&app) {
+                    secrets_rules.extend(list.clone());
+                }
+                if let Some(RuleMap::CategoryMap(cmap)) = sec.get(cat_name) {
+                    if let Some(list) = cmap.get(&app) {
+                        secrets_rules.extend(list.clone());
+                    }
+                }
+            }
+
+            let has_gpg = crate::command_exists("gpg");
+            let gpg_rec = config.gpg_recipient.as_ref();
+
+            for secret in &secrets_rules {
+                let secret_src_path = src_path.join(secret);
+                if !secret_src_path.exists() { continue; }
+                
+                ignore_literals.push(secret.clone());
+                
+                if skip_secrets || gpg_rec.is_none() || !has_gpg {
+                    if skip_secrets {
+                        ui.status("SKIP", &app, &format!("Secret {} skipped due to --skip-secrets", secret));
+                    } else if !has_gpg {
+                        ui.warn("Security", &format!("GPG not installed, skipping secret {}", secret));
+                    } else {
+                        ui.warn("Security", &format!("gpg_recipient not set, skipping secret {}", secret));
+                    }
+                    continue;
+                }
+
+                if !dry_run {
+                    let dest_secret_gpg = dest_path.join(format!("{}.tar.zst.gpg", secret));
+                    if let Some(p) = dest_secret_gpg.parent() { fs::create_dir_all(p)?; }
+                    
+                    let temp_dir = tempfile::tempdir()?;
+                    let temp_tar = temp_dir.path().join("secret.tar.zst");
+                    let tar_zst_file = fs::File::create(&temp_tar)?;
+                    let enc = zstd::Encoder::new(tar_zst_file, 3)?;
+                    let mut tar = tar::Builder::new(enc);
+                    
+                    if secret_src_path.is_dir() {
+                        tar.append_dir_all(secret, &secret_src_path)?;
+                    } else {
+                        // Use std::fs::File for append_file
+                        let mut f = fs::File::open(&secret_src_path)?;
+                        tar.append_file(secret, &mut f)?;
+                    }
+                    let enc = tar.into_inner()?;
+                    enc.finish()?;
+                    
+                    let status = std::process::Command::new("gpg")
+                        .args(["--batch", "--yes", "--encrypt", "--recipient", gpg_rec.unwrap(), "-o"])
+                        .arg(&dest_secret_gpg)
+                        .arg(&temp_tar)
+                        .status()?;
+                    if !status.success() {
+                        ui.warn("Security", &format!("Failed to encrypt {}", secret));
+                    } else {
+                        ui.status("ENCRYPT", &app, &format!("{} -> {}.tar.zst.gpg", secret, secret));
+                    }
+                } else {
+                    ui.status("ENCRYPT", &app, &format!("{} -> {}.tar.zst.gpg (dry run)", secret, secret));
+                }
+            }
+
             let whitelist_globs = whitelist_globs.build()?;
             let ignore_globs = ignore_globs.build()?;
 
@@ -435,7 +509,7 @@ mod tests {
     #[test]
     fn test_backup_missing_toml() {
         let (_dir, paths) = setup_test_env();
-        let result = run(&paths, None, false, false);
+        let result = run(&paths, None, false, false, false);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -475,7 +549,7 @@ ignores = ["*.key"]
 "#;
         write_config(&paths, toml_str);
 
-        run(&paths, None, false, false).unwrap();
+        run(&paths, None, false, false, false).unwrap();
 
         // Check if file.txt was backed up
         assert!(paths.config.join("myapp").join("file.txt").exists());
@@ -501,7 +575,7 @@ whitelists = ["../escaped", "normal"]
         fs::create_dir_all(&normal_dir).unwrap();
 
         // The path traversal should trigger the security warning and skip it, continuing fine.
-        run(&paths, None, false, false).unwrap();
+        run(&paths, None, false, false, false).unwrap();
 
         // Ensure we didn't back it up into the repo under a literal directory
         assert!(!paths.config.join("escaped").exists());
@@ -520,7 +594,7 @@ whitelists = []
 "#;
         write_config(&paths, toml_str);
 
-        run(&paths, None, false, false).unwrap();
+        run(&paths, None, false, false, false).unwrap();
 
         // Ensure an archive was created in paths.old/config
         let mut config_old_dir = fs::read_dir(paths.old.join("config")).unwrap();
@@ -552,7 +626,7 @@ myapp = ["drop.txt"]
         // Pre-create the repo dir
         fs::create_dir_all(paths.config.join("myapp")).unwrap();
 
-        run(&paths, None, false, false).unwrap();
+        run(&paths, None, false, false, false).unwrap();
 
         assert!(paths.config.join("myapp").join("keep.txt").exists());
         assert!(!paths.config.join("myapp").join("drop.txt").exists());
