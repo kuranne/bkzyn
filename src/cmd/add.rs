@@ -150,9 +150,9 @@ pub fn run(
                     let config_table = doc["config"].as_table_mut().unwrap();
 
                     if !config_table.contains_key(array_name) {
-                        config_table[array_name] = toml_edit::Item::Value(
-                            toml_edit::Value::Array(toml_edit::Array::new()),
-                        );
+                        config_table[array_name] = toml_edit::Item::Value(toml_edit::Value::Array(
+                            toml_edit::Array::new(),
+                        ));
                     }
 
                     if let Some(whitelist) = config_table[array_name].as_array_mut() {

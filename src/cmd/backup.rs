@@ -309,31 +309,45 @@ pub fn run(
 
             for secret in &secrets_rules {
                 let secret_src_path = src_path.join(secret);
-                if !secret_src_path.exists() { continue; }
-                
+                if !secret_src_path.exists() {
+                    continue;
+                }
+
                 ignore_literals.push(secret.clone());
-                
+
                 if skip_secrets || gpg_rec.is_none() || !has_gpg {
                     if skip_secrets {
-                        ui.status("SKIP", &app, &format!("Secret {} skipped due to --skip-secrets", secret));
+                        ui.status(
+                            "SKIP",
+                            &app,
+                            &format!("Secret {} skipped due to --skip-secrets", secret),
+                        );
                     } else if !has_gpg {
-                        ui.warn("Security", &format!("GPG not installed, skipping secret {}", secret));
+                        ui.warn(
+                            "Security",
+                            &format!("GPG not installed, skipping secret {}", secret),
+                        );
                     } else {
-                        ui.warn("Security", &format!("gpg_recipient not set, skipping secret {}", secret));
+                        ui.warn(
+                            "Security",
+                            &format!("gpg_recipient not set, skipping secret {}", secret),
+                        );
                     }
                     continue;
                 }
 
                 if !dry_run {
                     let dest_secret_gpg = dest_path.join(format!("{}.tar.zst.gpg", secret));
-                    if let Some(p) = dest_secret_gpg.parent() { fs::create_dir_all(p)?; }
-                    
+                    if let Some(p) = dest_secret_gpg.parent() {
+                        fs::create_dir_all(p)?;
+                    }
+
                     let temp_dir = tempfile::tempdir()?;
                     let temp_tar = temp_dir.path().join("secret.tar.zst");
                     let tar_zst_file = fs::File::create(&temp_tar)?;
                     let enc = zstd::Encoder::new(tar_zst_file, 3)?;
                     let mut tar = tar::Builder::new(enc);
-                    
+
                     if secret_src_path.is_dir() {
                         tar.append_dir_all(secret, &secret_src_path)?;
                     } else {
@@ -343,19 +357,34 @@ pub fn run(
                     }
                     let enc = tar.into_inner()?;
                     enc.finish()?;
-                    
+
                     let status = std::process::Command::new("gpg")
-                        .args(["--batch", "--yes", "--encrypt", "--recipient", gpg_rec.unwrap(), "-o"])
+                        .args([
+                            "--batch",
+                            "--yes",
+                            "--encrypt",
+                            "--recipient",
+                            gpg_rec.unwrap(),
+                            "-o",
+                        ])
                         .arg(&dest_secret_gpg)
                         .arg(&temp_tar)
                         .status()?;
                     if !status.success() {
                         ui.warn("Security", &format!("Failed to encrypt {}", secret));
                     } else {
-                        ui.status("ENCRYPT", &app, &format!("{} -> {}.tar.zst.gpg", secret, secret));
+                        ui.status(
+                            "ENCRYPT",
+                            &app,
+                            &format!("{} -> {}.tar.zst.gpg", secret, secret),
+                        );
                     }
                 } else {
-                    ui.status("ENCRYPT", &app, &format!("{} -> {}.tar.zst.gpg (dry run)", secret, secret));
+                    ui.status(
+                        "ENCRYPT",
+                        &app,
+                        &format!("{} -> {}.tar.zst.gpg (dry run)", secret, secret),
+                    );
                 }
             }
 

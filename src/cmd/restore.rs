@@ -73,7 +73,16 @@ pub fn run(
             if !dry_run {
                 fs::create_dir_all(host_dir)?;
             }
-            restore_directory(repo_dir, repo_dir, host_dir, &env, &ui, dry_run, strict, skip_secrets)?;
+            restore_directory(
+                repo_dir,
+                repo_dir,
+                host_dir,
+                &env,
+                &ui,
+                dry_run,
+                strict,
+                skip_secrets,
+            )?;
         }
     } else {
         ui.status("INFO", "Restore", "Restoring specific target paths...");
@@ -189,9 +198,9 @@ fn restore_directory(
 
         let rel_path = src_path.strip_prefix(repo_dir)?;
         let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
-        let is_gpg = src_path.extension().is_some_and(|ext| ext == "gpg") 
-                     && src_path.to_string_lossy().ends_with(".tar.zst.gpg");
-                     
+        let is_gpg = src_path.extension().is_some_and(|ext| ext == "gpg")
+            && src_path.to_string_lossy().ends_with(".tar.zst.gpg");
+
         let mut dest_rel_path = rel_path.to_path_buf();
         if is_tmpl {
             dest_rel_path.set_extension("");
@@ -201,7 +210,16 @@ fn restore_directory(
         }
         let dest_path = host_dir.join(&dest_rel_path);
 
-        restore_file(src_path, &dest_path, &app_name, env, ui, dry_run, strict, skip_secrets)?;
+        restore_file(
+            src_path,
+            &dest_path,
+            &app_name,
+            env,
+            ui,
+            dry_run,
+            strict,
+            skip_secrets,
+        )?;
     }
     Ok(())
 }
@@ -217,20 +235,34 @@ fn restore_file(
     strict: bool,
     skip_secrets: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let is_gpg = src_path.extension().is_some_and(|ext| ext == "gpg") 
-                 && src_path.to_string_lossy().ends_with(".tar.zst.gpg");
-    
+    let is_gpg = src_path.extension().is_some_and(|ext| ext == "gpg")
+        && src_path.to_string_lossy().ends_with(".tar.zst.gpg");
+
     if is_gpg {
         if skip_secrets {
-            ui.status("SKIP", app_name, &format!("Secret {} skipped due to --skip-secrets", dest_path.display()));
+            ui.status(
+                "SKIP",
+                app_name,
+                &format!(
+                    "Secret {} skipped due to --skip-secrets",
+                    dest_path.display()
+                ),
+            );
             return Ok(());
         }
         if !crate::command_exists("gpg") {
-            ui.warn("Security", &format!("GPG not installed, skipping secret {}", dest_path.display()));
+            ui.warn(
+                "Security",
+                &format!("GPG not installed, skipping secret {}", dest_path.display()),
+            );
             return Ok(());
         }
-        
-        ui.status("DECRYPT", app_name, &format!("Decrypting {}", dest_path.display()));
+
+        ui.status(
+            "DECRYPT",
+            app_name,
+            &format!("Decrypting {}", dest_path.display()),
+        );
         if !dry_run {
             let temp_dir = tempfile::tempdir()?;
             let temp_tar = temp_dir.path().join("secret.tar.zst");
@@ -240,14 +272,17 @@ fn restore_file(
                 .arg(src_path)
                 .status()?;
             if !status.success() {
-                ui.warn("Security", &format!("Failed to decrypt {}", src_path.display()));
+                ui.warn(
+                    "Security",
+                    &format!("Failed to decrypt {}", src_path.display()),
+                );
                 return Ok(());
             }
-            
+
             let tar_zst_file = fs::File::open(&temp_tar)?;
             let dec = zstd::Decoder::new(tar_zst_file)?;
             let mut tar = tar::Archive::new(dec);
-            
+
             if let Some(parent) = dest_path.parent() {
                 fs::create_dir_all(parent)?;
                 tar.unpack(parent)?;

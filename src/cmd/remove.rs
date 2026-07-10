@@ -160,9 +160,8 @@ pub fn run(
                             .to_string_lossy()
                             .to_string();
 
-                        if let Some(wl) = app_table
-                            .get_mut(array_name)
-                            .and_then(|v| v.as_array_mut())
+                        if let Some(wl) =
+                            app_table.get_mut(array_name).and_then(|v| v.as_array_mut())
                         {
                             let original_len = wl.len();
                             wl.retain(|v| v.as_str() != Some(&relative_to_app));
@@ -203,9 +202,8 @@ pub fn run(
                         if let Some(cat_table) =
                             doc.get_mut(&cat_name).and_then(|i| i.as_table_mut())
                         {
-                            if let Some(wl) = cat_table
-                                .get_mut(array_name)
-                                .and_then(|v| v.as_array_mut())
+                            if let Some(wl) =
+                                cat_table.get_mut(array_name).and_then(|v| v.as_array_mut())
                             {
                                 let original_len = wl.len();
                                 wl.retain(|v| v.as_str() != Some(&app_name));
@@ -255,9 +253,8 @@ pub fn run(
                 } else if !is_deep_file {
                     // Check if it's listed directly in the category's whitelists
                     if let Some(cat_table) = doc.get_mut(&cat_name).and_then(|i| i.as_table_mut()) {
-                        if let Some(wl) = cat_table
-                            .get_mut(array_name)
-                            .and_then(|v| v.as_array_mut())
+                        if let Some(wl) =
+                            cat_table.get_mut(array_name).and_then(|v| v.as_array_mut())
                         {
                             let original_len = wl.len();
                             wl.retain(|v| v.as_str() != Some(&app_name));

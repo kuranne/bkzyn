@@ -1,7 +1,7 @@
+use crate::command_exists;
 use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
-use crate::command_exists;
 
 /// Sets up packages and copies configurations.
 pub fn run(

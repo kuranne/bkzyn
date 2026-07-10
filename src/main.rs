@@ -1,4 +1,6 @@
-use bkzyn::cmd::{add, backup, log, pattern, remove, restore, rollback, save, setup, status, sync};
+use bkzyn::cmd::{
+    add, backup, init, log, pattern, remove, restore, rollback, save, setup, status, sync,
+};
 use clap::{Parser, Subcommand};
 use std::process;
 
@@ -59,6 +61,9 @@ enum Commands {
         #[arg(long)]
         skip_secrets: bool,
     },
+    /// Interactively setup tracking configuration (wizard mode)
+    #[command(visible_aliases = ["wizard"])]
+    Init,
     /// Add new configurations to the backup repository
     Add {
         /// The paths to the files or directories to add
@@ -128,10 +133,22 @@ fn main() {
 
     if let Err(e) = match &cli.command {
         Commands::Check => restore::run(&paths, vec![], true, cli.verbose, true, true),
-        Commands::Backup { set_url, skip_secrets } => {
-            backup::run(&paths, set_url.as_deref(), cli.dry_run, cli.verbose, *skip_secrets)
-        }
-        Commands::Add { paths: p, ignores, secret } => add::run(
+        Commands::Init => init::run(&paths, cli.dry_run, cli.verbose),
+        Commands::Backup {
+            set_url,
+            skip_secrets,
+        } => backup::run(
+            &paths,
+            set_url.as_deref(),
+            cli.dry_run,
+            cli.verbose,
+            *skip_secrets,
+        ),
+        Commands::Add {
+            paths: p,
+            ignores,
+            secret,
+        } => add::run(
             &paths,
             p.clone(),
             ignores.as_deref(),
@@ -139,7 +156,9 @@ fn main() {
             cli.verbose,
             *secret,
         ),
-        Commands::Remove { paths: p, secret } => remove::run(&paths, p.clone(), cli.dry_run, cli.verbose, *secret),
+        Commands::Remove { paths: p, secret } => {
+            remove::run(&paths, p.clone(), cli.dry_run, cli.verbose, *secret)
+        }
         Commands::Setup {
             zdotdir,
             no_check_zsh,
@@ -152,7 +171,18 @@ fn main() {
             cli.verbose,
             *skip_secrets,
         ),
-        Commands::Restore { paths: p, strict, skip_secrets } => restore::run(&paths, p.clone(), cli.dry_run, cli.verbose, *strict, *skip_secrets),
+        Commands::Restore {
+            paths: p,
+            strict,
+            skip_secrets,
+        } => restore::run(
+            &paths,
+            p.clone(),
+            cli.dry_run,
+            cli.verbose,
+            *strict,
+            *skip_secrets,
+        ),
         Commands::Ignore { paths: p } => pattern::run(&paths, p.clone(), cli.dry_run, cli.verbose),
         Commands::Save { category, message } => save::run(
             &paths,
