@@ -1,5 +1,6 @@
 pub mod add;
 pub mod backup;
+pub mod init;
 pub mod log;
 pub mod pattern;
 pub mod remove;

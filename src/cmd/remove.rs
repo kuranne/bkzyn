@@ -8,8 +8,10 @@ pub fn run(
     paths_to_remove: Vec<PathBuf>,
     dry_run: bool,
     verbose: bool,
+    secret: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
+    let array_name = if secret { "secrets" } else { "whitelists" };
 
     let backup_toml_path = paths
         .get_backup_toml_path()
@@ -158,9 +160,8 @@ pub fn run(
                             .to_string_lossy()
                             .to_string();
 
-                        if let Some(wl) = app_table
-                            .get_mut("whitelists")
-                            .and_then(|v| v.as_array_mut())
+                        if let Some(wl) =
+                            app_table.get_mut(array_name).and_then(|v| v.as_array_mut())
                         {
                             let original_len = wl.len();
                             wl.retain(|v| v.as_str() != Some(&relative_to_app));
@@ -170,8 +171,8 @@ pub fn run(
                                     "INFO",
                                     "Config",
                                     &format!(
-                                        "Removed '{}' from whitelists for app '{}'",
-                                        relative_to_app, app_name
+                                        "Removed '{}' from {} for app '{}'",
+                                        relative_to_app, array_name, app_name
                                     ),
                                 );
                             }
@@ -201,9 +202,8 @@ pub fn run(
                         if let Some(cat_table) =
                             doc.get_mut(&cat_name).and_then(|i| i.as_table_mut())
                         {
-                            if let Some(wl) = cat_table
-                                .get_mut("whitelists")
-                                .and_then(|v| v.as_array_mut())
+                            if let Some(wl) =
+                                cat_table.get_mut(array_name).and_then(|v| v.as_array_mut())
                             {
                                 let original_len = wl.len();
                                 wl.retain(|v| v.as_str() != Some(&app_name));
@@ -213,8 +213,8 @@ pub fn run(
                                         "INFO",
                                         "Config",
                                         &format!(
-                                            "Removed app '{}' from [{}] whitelists",
-                                            app_name, cat_name
+                                            "Removed app '{}' from [{}] {}",
+                                            app_name, cat_name, array_name
                                         ),
                                     );
                                 }
@@ -253,9 +253,8 @@ pub fn run(
                 } else if !is_deep_file {
                     // Check if it's listed directly in the category's whitelists
                     if let Some(cat_table) = doc.get_mut(&cat_name).and_then(|i| i.as_table_mut()) {
-                        if let Some(wl) = cat_table
-                            .get_mut("whitelists")
-                            .and_then(|v| v.as_array_mut())
+                        if let Some(wl) =
+                            cat_table.get_mut(array_name).and_then(|v| v.as_array_mut())
                         {
                             let original_len = wl.len();
                             wl.retain(|v| v.as_str() != Some(&app_name));
@@ -265,8 +264,8 @@ pub fn run(
                                     "INFO",
                                     "Config",
                                     &format!(
-                                        "Removed app '{}' from [{}] whitelists",
-                                        app_name, cat_name
+                                        "Removed app '{}' from [{}] {}",
+                                        app_name, cat_name, array_name
                                     ),
                                 );
                             }
@@ -343,7 +342,7 @@ mod tests {
     fn test_remove_missing_toml_fails() {
         let (_dir, paths) = setup_test_env();
         let target = paths.xdg_config.join("myapp").join("pattern.log");
-        let result = run(&paths, vec![target], false, false);
+        let result = run(&paths, vec![target], false, false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("backup.toml"));
     }
@@ -362,7 +361,7 @@ mod tests {
         fs::create_dir_all(&repo_app).unwrap();
         fs::write(repo_app.join("pattern.log"), "test").unwrap();
 
-        run(&paths, vec![target], false, false).unwrap();
+        run(&paths, vec![target], false, false, false).unwrap();
 
         let content = fs::read_to_string(&toml_path).unwrap();
         assert!(!content.contains("\"pattern.log\""));
@@ -382,7 +381,7 @@ mod tests {
         fs::create_dir_all(&repo_app).unwrap();
         fs::write(repo_app.join("pattern.log"), "test").unwrap();
 
-        run(&paths, vec![target], false, false).unwrap();
+        run(&paths, vec![target], false, false, false).unwrap();
 
         let content = fs::read_to_string(&toml_path).unwrap();
         assert!(!content.contains("\"myapp\"")); // Should be removed from config whitelists
@@ -401,7 +400,7 @@ mod tests {
         fs::create_dir_all(&repo_app).unwrap();
         fs::write(repo_app.join("pattern.log"), "test").unwrap();
 
-        run(&paths, vec![target], true, false).unwrap();
+        run(&paths, vec![target], true, false, false).unwrap();
 
         // File must be unchanged after dry-run.
         let content = fs::read_to_string(&toml_path).unwrap();

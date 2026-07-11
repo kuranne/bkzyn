@@ -24,10 +24,22 @@ pub fn run(
         if !pull_status.success() {
             ui.warn(
                 "Sync",
-                "Failed to pull changes. You might need to resolve conflicts manually.",
+                "Sync conflict detected. Aborting rebase to protect local data.",
             );
-            // We don't return an error here immediately because they might still want to push,
-            // but usually pull fails mean push will fail too.
+            let abort_status = Command::new("git")
+                .current_dir(&data_dir)
+                .arg("rebase")
+                .arg("--abort")
+                .status()?;
+
+            if !abort_status.success() {
+                ui.warn(
+                    "Sync",
+                    "Failed to abort rebase. Your git repository may be in an intermediate state.",
+                );
+            }
+
+            return Err("Sync conflict detected. Please resolve manually or force push.".into());
         }
     }
 

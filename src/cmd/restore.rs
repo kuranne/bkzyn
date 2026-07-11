@@ -10,6 +10,8 @@ pub fn run(
     target_paths: Vec<PathBuf>,
     dry_run: bool,
     verbose: bool,
+    strict: bool,
+    skip_secrets: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ui = crate::cli::CliManager::new(verbose);
 
@@ -71,7 +73,16 @@ pub fn run(
             if !dry_run {
                 fs::create_dir_all(host_dir)?;
             }
-            restore_directory(repo_dir, repo_dir, host_dir, &env, &ui, dry_run)?;
+            restore_directory(
+                repo_dir,
+                repo_dir,
+                host_dir,
+                &env,
+                &ui,
+                dry_run,
+                strict,
+                skip_secrets,
+            )?;
         }
     } else {
         ui.status("INFO", "Restore", "Restoring specific target paths...");
@@ -95,7 +106,16 @@ pub fn run(
                     tmpl_target.set_file_name(tmpl_name);
 
                     if repo_target.exists() && repo_target.is_dir() {
-                        restore_directory(repo_dir, &repo_target, &target_abs, &env, &ui, dry_run)?;
+                        restore_directory(
+                            repo_dir,
+                            &repo_target,
+                            &target_abs,
+                            &env,
+                            &ui,
+                            dry_run,
+                            strict,
+                            skip_secrets,
+                        )?;
                     } else if repo_target.exists() || tmpl_target.exists() {
                         let actual_src = if tmpl_target.exists() {
                             tmpl_target
@@ -107,7 +127,16 @@ pub fn run(
                             .next()
                             .map(|c| c.as_os_str().to_string_lossy().into_owned())
                             .unwrap_or_default();
-                        restore_file(&actual_src, &target_abs, &app_name, &env, &ui, dry_run)?;
+                        restore_file(
+                            &actual_src,
+                            &target_abs,
+                            &app_name,
+                            &env,
+                            &ui,
+                            dry_run,
+                            strict,
+                            skip_secrets,
+                        )?;
                     } else {
                         ui.warn(
                             "Restore",
@@ -136,6 +165,7 @@ pub fn run(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn restore_directory(
     base_repo_dir: &Path,
     repo_dir: &Path,
@@ -143,6 +173,8 @@ fn restore_directory(
     env: &Environment,
     ui: &crate::cli::CliManager,
     dry_run: bool,
+    strict: bool,
+    skip_secrets: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let walker = WalkBuilder::new(repo_dir).standard_filters(false).build();
 
@@ -166,17 +198,33 @@ fn restore_directory(
 
         let rel_path = src_path.strip_prefix(repo_dir)?;
         let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
+        let is_gpg = src_path.extension().is_some_and(|ext| ext == "gpg")
+            && src_path.to_string_lossy().ends_with(".tar.zst.gpg");
+
         let mut dest_rel_path = rel_path.to_path_buf();
         if is_tmpl {
             dest_rel_path.set_extension("");
+        } else if is_gpg {
+            let p_str = dest_rel_path.to_string_lossy().replace(".tar.zst.gpg", "");
+            dest_rel_path = PathBuf::from(p_str);
         }
         let dest_path = host_dir.join(&dest_rel_path);
 
-        restore_file(src_path, &dest_path, &app_name, env, ui, dry_run)?;
+        restore_file(
+            src_path,
+            &dest_path,
+            &app_name,
+            env,
+            ui,
+            dry_run,
+            strict,
+            skip_secrets,
+        )?;
     }
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn restore_file(
     src_path: &Path,
     dest_path: &Path,
@@ -184,62 +232,125 @@ fn restore_file(
     env: &Environment,
     ui: &crate::cli::CliManager,
     dry_run: bool,
+    strict: bool,
+    skip_secrets: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
+    let is_gpg = src_path.extension().is_some_and(|ext| ext == "gpg")
+        && src_path.to_string_lossy().ends_with(".tar.zst.gpg");
 
-    if !dry_run {
-        if let Some(parent) = dest_path.parent() {
-            fs::create_dir_all(parent)?;
+    if is_gpg {
+        if skip_secrets {
+            ui.status(
+                "SKIP",
+                app_name,
+                &format!(
+                    "Secret {} skipped due to --skip-secrets",
+                    dest_path.display()
+                ),
+            );
+            return Ok(());
         }
-        if dest_path.exists() {
-            let meta = fs::symlink_metadata(dest_path)?;
-            if meta.is_dir() {
-                let backup_path = PathBuf::from(format!("{}.bak", dest_path.display()));
-                fs::rename(dest_path, &backup_path)?;
-            } else {
-                fs::remove_file(dest_path)?;
+        if !crate::command_exists("gpg") {
+            ui.warn(
+                "Security",
+                &format!("GPG not installed, skipping secret {}", dest_path.display()),
+            );
+            return Ok(());
+        }
+
+        ui.status(
+            "DECRYPT",
+            app_name,
+            &format!("Decrypting {}", dest_path.display()),
+        );
+        if !dry_run {
+            let temp_dir = tempfile::tempdir()?;
+            let temp_tar = temp_dir.path().join("secret.tar.zst");
+            let status = std::process::Command::new("gpg")
+                .args(["--batch", "--yes", "--decrypt", "-o"])
+                .arg(&temp_tar)
+                .arg(src_path)
+                .status()?;
+            if !status.success() {
+                ui.warn(
+                    "Security",
+                    &format!("Failed to decrypt {}", src_path.display()),
+                );
+                return Ok(());
+            }
+
+            let tar_zst_file = fs::File::open(&temp_tar)?;
+            let dec = zstd::Decoder::new(tar_zst_file)?;
+            let mut tar = tar::Archive::new(dec);
+
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent)?;
+                tar.unpack(parent)?;
             }
         }
+        return Ok(());
+    }
 
-        if is_tmpl {
-            ui.status(
-                "RENDER",
-                app_name,
-                &format!("{} -> {}", src_path.display(), dest_path.display()),
-            );
-            let template_content = fs::read_to_string(src_path)?;
-            match env.render_str(&template_content, minijinja::context!()) {
-                Ok(rendered) => {
+    let is_tmpl = src_path.extension().is_some_and(|ext| ext == "tmpl");
+
+    if is_tmpl {
+        ui.status(
+            "RENDER",
+            app_name,
+            &format!("{} -> {}", src_path.display(), dest_path.display()),
+        );
+        let template_content = fs::read_to_string(src_path)?;
+        match env.render_str(&template_content, minijinja::context!()) {
+            Ok(rendered) => {
+                if !dry_run {
+                    if let Some(parent) = dest_path.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    if dest_path.exists() {
+                        let meta = fs::symlink_metadata(dest_path)?;
+                        if meta.is_dir() {
+                            let backup_path = PathBuf::from(format!("{}.bak", dest_path.display()));
+                            fs::rename(dest_path, &backup_path)?;
+                        } else {
+                            fs::remove_file(dest_path)?;
+                        }
+                    }
                     fs::write(dest_path, rendered)?;
                 }
-                Err(e) => {
+            }
+            Err(e) => {
+                if strict {
+                    return Err(
+                        format!("Failed to render template {}: {}", src_path.display(), e).into(),
+                    );
+                } else {
                     ui.warn(
                         "Render",
                         &format!("Failed to render template {}: {}", src_path.display(), e),
                     );
                 }
             }
-        } else {
-            ui.status(
-                "COPY",
-                app_name,
-                &format!("{} -> {}", src_path.display(), dest_path.display()),
-            );
-            fs::copy(src_path, dest_path)?;
         }
     } else {
-        if is_tmpl {
-            ui.status(
-                "RENDER",
-                app_name,
-                &format!("{} -> {}", src_path.display(), dest_path.display()),
-            );
-        } else {
-            ui.status(
-                "COPY",
-                app_name,
-                &format!("{} -> {}", src_path.display(), dest_path.display()),
-            );
+        ui.status(
+            "COPY",
+            app_name,
+            &format!("{} -> {}", src_path.display(), dest_path.display()),
+        );
+        if !dry_run {
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            if dest_path.exists() {
+                let meta = fs::symlink_metadata(dest_path)?;
+                if meta.is_dir() {
+                    let backup_path = PathBuf::from(format!("{}.bak", dest_path.display()));
+                    fs::rename(dest_path, &backup_path)?;
+                } else {
+                    fs::remove_file(dest_path)?;
+                }
+            }
+            fs::copy(src_path, dest_path)?;
         }
     }
     Ok(())
@@ -285,7 +396,7 @@ whitelists = ["myapp"]
     fn test_restore_missing_config_dir() {
         let (_dir, paths) = setup_test_env();
         fs::remove_dir_all(&paths.config).unwrap(); // remove it
-        let result = run(&paths, Vec::new(), false, false);
+        let result = run(&paths, Vec::new(), false, false, false, false);
         assert!(result.is_ok());
     }
 
@@ -296,7 +407,7 @@ whitelists = ["myapp"]
         fs::create_dir_all(&app_dir).unwrap();
         fs::write(app_dir.join("file.txt"), "hello world").unwrap();
 
-        run(&paths, Vec::new(), false, false).unwrap();
+        run(&paths, Vec::new(), false, false, false, false).unwrap();
 
         let dest_file = paths.xdg_config.join("myapp").join("file.txt");
         assert!(dest_file.exists());
@@ -320,7 +431,7 @@ whitelists = ["myapp"]
         fs::create_dir_all(&backup_dir).unwrap();
         fs::write(backup_dir.join("host.toml"), "my_val = \"super_secret\"").unwrap();
 
-        run(&paths, Vec::new(), false, false).unwrap();
+        run(&paths, Vec::new(), false, false, false, false).unwrap();
 
         let dest_file = paths.xdg_config.join("myapp").join("config.toml");
         assert!(dest_file.exists());
@@ -345,13 +456,33 @@ whitelists = ["myapp"]
         .unwrap();
         fs::write(app_dir.join("good.txt"), "fine").unwrap();
 
-        run(&paths, Vec::new(), false, false).unwrap();
+        run(&paths, Vec::new(), false, false, false, false).unwrap();
 
         let dest_bad = paths.xdg_config.join("myapp").join("bad");
         assert!(!dest_bad.exists()); // failed to render, so not created
 
         let dest_good = paths.xdg_config.join("myapp").join("good.txt");
         assert!(dest_good.exists()); // but the rest of the files still worked
+    }
+
+    #[test]
+    fn test_restore_template_fail_with_strict_aborts() {
+        let (_dir, paths) = setup_test_env();
+        let app_dir = paths.config.join("myapp");
+        fs::create_dir_all(&app_dir).unwrap();
+        // invalid template syntax
+        fs::write(
+            app_dir.join("bad.tmpl"),
+            "{{ undefined.var.that.causes.error",
+        )
+        .unwrap();
+
+        let result = run(&paths, Vec::new(), false, false, true, false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to render template"));
     }
 
     #[test]
@@ -365,7 +496,7 @@ whitelists = ["myapp"]
         let dest_dir = paths.xdg_config.join("myapp").join("file.txt");
         fs::create_dir_all(&dest_dir).unwrap();
 
-        run(&paths, Vec::new(), false, false).unwrap();
+        run(&paths, Vec::new(), false, false, false, false).unwrap();
 
         let dest_file = paths.xdg_config.join("myapp").join("file.txt");
         assert!(dest_file.exists());

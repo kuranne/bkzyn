@@ -4,6 +4,17 @@ pub mod cli;
 pub mod cmd;
 pub mod config;
 
+/// Checks if a command exists in the system PATH.
+pub fn command_exists(cmd: &str) -> bool {
+    std::process::Command::new("which")
+        .arg(cmd)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Paths configuration for the application.
 pub struct AppPaths {
     /// Directory where the repository is stored.
